@@ -57,3 +57,21 @@ html.ace-view-transitions-enabled {
     animation-delay: 0ms !important;
   }
 }
+
+html.ace-view-transition-fade body {
+  opacity: 0.98;
+  transition: opacity 180ms ease, transform 180ms ease;
+  transform: translateY(2px);
+}
+
+html.ace-view-transition-fade body[data-ace-transition-ready="1"] {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.ace-view-transition-fade body {
+    transition: none !important;
+    transform: none !important;
+  }
+}

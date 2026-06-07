@@ -1,0 +1,18 @@
+@view-transition {
+  navigation: auto;
+}
+
+html {
+  view-transition-name: root;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-image-pair(*),
+  ::view-transition-new(*),
+  ::view-transition-old(*) {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+  }
+}

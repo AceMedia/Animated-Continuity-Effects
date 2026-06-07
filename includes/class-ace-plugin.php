@@ -163,6 +163,16 @@ class ACE_Plugin {
      * Register admin menu.
      */
     public function register_admin_menu() {
+        add_menu_page(
+            __('Animated Continuity Effects', 'animated-continuity-effects'),
+            __('Continuity Effects', 'animated-continuity-effects'),
+            'manage_options',
+            'animated-continuity-effects',
+            array($this, 'render_settings_page'),
+            'dashicons-superhero',
+            65
+        );
+
         $this->hook_suffix = add_options_page(
             __('Animated Continuity Effects', 'animated-continuity-effects'),
             __('Animated Continuity Effects', 'animated-continuity-effects'),

@@ -48,6 +48,8 @@ class ACE_Plugin {
         add_action('admin_init', array($this, 'register_settings'));
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_assets'));
         add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_assets'));
+        add_action('wp_head', array($this, 'output_frontend_inline_styles'), 20);
+        add_action('wp_head', array($this, 'output_frontend_inline_bootstrap'), 30);
     }
 
     /**
@@ -360,6 +362,175 @@ class ACE_Plugin {
             'window.ACE_VIEW_TRANSITIONS = ' . wp_json_encode($config) . ';',
             'before'
         );
+    }
+
+    /**
+     * Output frontend CSS directly in the head.
+     */
+    public function output_frontend_inline_styles() {
+        if (is_admin()) {
+            return;
+        }
+
+        $settings = $this->get_settings();
+        $config = $this->build_frontend_config($settings);
+        echo '<style id="ace-view-transition-inline-css">';
+        echo '@view-transition { navigation: auto; }';
+        echo 'html.ace-view-transitions-enabled { view-transition-name: root; }';
+        echo '::view-transition { background: transparent; }';
+        echo '::view-transition-group(root) { animation-duration: ' . esc_html($config['cssVars']['--ace-view-transition-duration']) . '; animation-timing-function: ' . esc_html($config['cssVars']['--ace-view-transition-timing-function']) . '; }';
+        echo '::view-transition-old(root) { animation: ace-root-out ' . esc_html($config['cssVars']['--ace-view-transition-duration']) . ' ' . esc_html($config['cssVars']['--ace-view-transition-timing-function']) . ' both; }';
+        echo '::view-transition-new(root) { animation: ace-root-in ' . esc_html($config['cssVars']['--ace-view-transition-duration']) . ' ' . esc_html($config['cssVars']['--ace-view-transition-timing-function']) . ' both; }';
+        echo '@keyframes ace-root-out { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-12px); } }';
+        echo '@keyframes ace-root-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }';
+        echo '</style>';
+    }
+
+    /**
+     * Output frontend bootstrap directly in the head.
+     */
+    public function output_frontend_inline_bootstrap() {
+        if (is_admin()) {
+            return;
+        }
+
+        $settings = $this->get_settings();
+        $config = $this->build_frontend_config($settings);
+        ?>
+        <script id="ace-view-transition-inline-js">
+        window.ACE_VIEW_TRANSITIONS = <?php echo wp_json_encode($config); ?>;
+        (function () {
+            'use strict';
+            var config = window.ACE_VIEW_TRANSITIONS || {};
+            var cssVars = config.cssVars || {};
+            var excludeList = Array.isArray(config.excludeList) ? config.excludeList : [];
+            var sameElementRules = Array.isArray(config.sameElementRules) ? config.sameElementRules : [];
+            var enableRootTransition = config.enableRootTransition !== false;
+            var respectReducedMotion = config.respectReducedMotion !== false;
+            var supportsViewTransitions = 'startViewTransition' in document;
+
+            function applyCssVariables() {
+                var root = document.documentElement;
+                Object.keys(cssVars).forEach(function (key) {
+                    if (cssVars[key]) {
+                        root.style.setProperty(key, String(cssVars[key]));
+                    }
+                });
+            }
+
+            function hasExcludedMatch(root) {
+                if (!root || !excludeList.length) {
+                    return false;
+                }
+
+                return excludeList.some(function (selector) {
+                    try {
+                        return !!root.querySelector(selector);
+                    } catch (error) {
+                        return false;
+                    }
+                });
+            }
+
+            function slugify(value) {
+                return String(value)
+                    .toLowerCase()
+                    .replace(/[^a-z0-9]+/g, '-')
+                    .replace(/^-+|-+$/g, '')
+                    .slice(0, 40);
+            }
+
+            function scopeToken(rule, index) {
+                return slugify(['post', rule.scope || 'post', rule.label || index].join('-'));
+            }
+
+            function uniqueMatchName(base, index) {
+                return 'ace-' + base + '-' + index;
+            }
+
+            function enableDocumentTransition() {
+                if (!supportsViewTransitions || !enableRootTransition) {
+                    return;
+                }
+
+                document.documentElement.style.viewTransitionName = 'root';
+            }
+
+            function applySharedElementNames() {
+                var seen = new Set();
+
+                sameElementRules.forEach(function (rule, ruleIndex) {
+                    if (!rule || !rule.selector) {
+                        return;
+                    }
+
+                    var elements = [];
+                    try {
+                        elements = Array.from(document.querySelectorAll(rule.selector));
+                    } catch (error) {
+                        return;
+                    }
+
+                    elements.forEach(function (element, elementIndex) {
+                        var token = uniqueMatchName(scopeToken(rule, ruleIndex), elementIndex);
+                        if (seen.has(token)) {
+                            return;
+                        }
+
+                        seen.add(token);
+                        element.style.viewTransitionName = token;
+                    });
+                });
+            }
+
+            function setDocumentHints() {
+                document.documentElement.classList.add('ace-view-transitions-enabled');
+                document.documentElement.style.setProperty('--ace-view-transition-enabled', '1');
+            }
+
+            function setupNavigationGuards() {
+                window.addEventListener('pageswap', function (event) {
+                    if (!event || !event.viewTransition) {
+                        return;
+                    }
+
+                    if (hasExcludedMatch(document)) {
+                        event.viewTransition.skipTransition();
+                    }
+                });
+
+                window.addEventListener('pagereveal', function (event) {
+                    if (!event || !event.viewTransition) {
+                        return;
+                    }
+
+                    if (respectReducedMotion && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                        event.viewTransition.skipTransition();
+                    }
+                });
+            }
+
+            function init() {
+                applyCssVariables();
+                setDocumentHints();
+
+                if (!supportsViewTransitions) {
+                    return;
+                }
+
+                enableDocumentTransition();
+                applySharedElementNames();
+                setupNavigationGuards();
+            }
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', init, { once: true });
+            } else {
+                init();
+            }
+        }());
+        </script>
+        <?php
     }
 
     /**

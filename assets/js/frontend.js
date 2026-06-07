@@ -9,7 +9,7 @@
   const enableRootTransition = config.enableRootTransition !== false;
   const respectReducedMotion = config.respectReducedMotion !== false;
 
-  const supportsViewTransitions = 'startViewTransition' in document && 'onpageswap' in window && 'onpagereveal' in window;
+  const supportsViewTransitions = 'startViewTransition' in document;
 
   function applyCssVariables() {
     const root = document.documentElement;

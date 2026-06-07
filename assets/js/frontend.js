@@ -96,6 +96,7 @@
   }
 
   function setDocumentHints() {
+    document.documentElement.classList.add('ace-view-transitions-enabled');
     document.documentElement.style.setProperty('--ace-view-transition-enabled', '1');
   }
 

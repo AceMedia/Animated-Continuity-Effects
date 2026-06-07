@@ -494,11 +494,11 @@ class ACE_Plugin {
         $config = $this->build_frontend_config($settings);
         echo '<style id="ace-view-transition-inline-css">';
         echo '@view-transition { navigation: auto; }';
-        echo 'html.ace-view-transitions-enabled { view-transition-name: root; }';
+        echo 'html.ace-view-transitions-enabled { view-transition-name: root; --ace-view-transition-old-animation: ace-root-out-' . esc_html($config['animationStyle']) . '; --ace-view-transition-new-animation: ace-root-in-' . esc_html($config['animationStyle']) . '; }';
         echo '::view-transition { background: transparent; }';
         echo '::view-transition-group(root) { animation-duration: ' . esc_html($config['cssVars']['--ace-view-transition-duration']) . '; animation-timing-function: ' . esc_html($config['cssVars']['--ace-view-transition-timing-function']) . '; }';
-        echo '::view-transition-old(root) { animation: ace-root-out-' . esc_html($config['animationStyle']) . ' ' . esc_html($config['cssVars']['--ace-view-transition-duration']) . ' ' . esc_html($config['cssVars']['--ace-view-transition-timing-function']) . ' both; }';
-        echo '::view-transition-new(root) { animation: ace-root-in-' . esc_html($config['animationStyle']) . ' ' . esc_html($config['cssVars']['--ace-view-transition-duration']) . ' ' . esc_html($config['cssVars']['--ace-view-transition-timing-function']) . ' both; }';
+        echo '::view-transition-old(root) { animation: var(--ace-view-transition-old-animation, ace-root-out-fade) ' . esc_html($config['cssVars']['--ace-view-transition-duration']) . ' ' . esc_html($config['cssVars']['--ace-view-transition-timing-function']) . ' both; }';
+        echo '::view-transition-new(root) { animation: var(--ace-view-transition-new-animation, ace-root-in-fade) ' . esc_html($config['cssVars']['--ace-view-transition-duration']) . ' ' . esc_html($config['cssVars']['--ace-view-transition-timing-function']) . ' both; }';
         foreach ($animation_styles as $style_key => $style) {
             echo '@keyframes ace-root-out-' . esc_html($style_key) . ' { ' . esc_html($style['old_keyframes']) . ' }';
             echo '@keyframes ace-root-in-' . esc_html($style_key) . ' { ' . esc_html($style['new_keyframes']) . ' }';
@@ -665,6 +665,10 @@ class ACE_Plugin {
             '--ace-view-transition-timing-function' => $settings['timing_function'],
             '--ace-view-transition-delay' => $settings['delay'],
         );
+        $animation_styles = self::animation_styles();
+        $animation_style_key = isset($settings['animation_style']) && isset($animation_styles[$settings['animation_style']]) ? $settings['animation_style'] : 'fade';
+        $css_vars['--ace-view-transition-old-animation'] = 'ace-root-out-' . $animation_style_key;
+        $css_vars['--ace-view-transition-new-animation'] = 'ace-root-in-' . $animation_style_key;
 
         $shared_elements = self::shared_element_presets();
         $selected_shared = array();

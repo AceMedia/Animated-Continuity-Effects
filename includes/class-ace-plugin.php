@@ -72,6 +72,12 @@ class ACE_Plugin {
                 'entry_title' => '1',
                 'avatar' => '0',
             ),
+            'persistent_elements' => array(
+                'site_header' => '0',
+                'site_footer' => '0',
+                'primary_nav' => '0',
+                'sidebar' => '0',
+            ),
             'name_scope' => 'post',
             'exclude_list' => '',
             'advanced_selectors' => '',
@@ -143,6 +149,32 @@ class ACE_Plugin {
     }
 
     /**
+     * Persistent element presets.
+     *
+     * @return array<string, array<string, string>>
+     */
+    private static function persistent_element_presets() {
+        return array(
+            'site_header' => array(
+                'label' => 'Site header',
+                'selector' => 'header, .site-header, .wp-block-template-part header',
+            ),
+            'site_footer' => array(
+                'label' => 'Site footer',
+                'selector' => 'footer, .site-footer, .wp-block-template-part footer',
+            ),
+            'primary_nav' => array(
+                'label' => 'Primary navigation',
+                'selector' => 'nav, .primary-navigation, .wp-block-navigation',
+            ),
+            'sidebar' => array(
+                'label' => 'Sidebar',
+                'selector' => 'aside, .sidebar, .widget-area',
+            ),
+        );
+    }
+
+    /**
      * Load settings.
      *
      * @return array<string, mixed>
@@ -155,6 +187,7 @@ class ACE_Plugin {
 
         $settings = wp_parse_args($stored, self::default_settings());
         $settings['shared_elements'] = wp_parse_args($settings['shared_elements'], self::default_settings()['shared_elements']);
+        $settings['persistent_elements'] = wp_parse_args($settings['persistent_elements'], self::default_settings()['persistent_elements']);
 
         return $settings;
     }
@@ -260,6 +293,14 @@ class ACE_Plugin {
         );
 
         add_settings_field(
+            'persistent_elements',
+            __('Persistent regions', 'animated-continuity-effects'),
+            array($this, 'render_persistent_elements_field'),
+            'animated-continuity-effects',
+            'ace_main_section'
+        );
+
+        add_settings_field(
             'exclude_list',
             __('Exclusions', 'animated-continuity-effects'),
             array($this, 'render_exclusions_field'),
@@ -296,6 +337,13 @@ class ACE_Plugin {
         $output['shared_elements'] = array();
         foreach ($shared_defaults as $key => $value) {
             $output['shared_elements'][$key] = isset($shared_input[$key]) && '1' === (string) wp_unslash($shared_input[$key]) ? '1' : '0';
+        }
+
+        $persistent_defaults = $defaults['persistent_elements'];
+        $persistent_input = isset($input['persistent_elements']) && is_array($input['persistent_elements']) ? $input['persistent_elements'] : array();
+        $output['persistent_elements'] = array();
+        foreach ($persistent_defaults as $key => $value) {
+            $output['persistent_elements'][$key] = isset($persistent_input[$key]) && '1' === (string) wp_unslash($persistent_input[$key]) ? '1' : '0';
         }
 
         $output['transition_mode'] = isset($input['transition_mode']) ? sanitize_key(wp_unslash($input['transition_mode'])) : 'cross-document';
@@ -564,12 +612,20 @@ class ACE_Plugin {
             }
         }
 
+        $persistent_elements = self::persistent_element_presets();
+        $selected_persistent = array();
+        foreach ($settings['persistent_elements'] as $key => $enabled) {
+            if ('1' === (string) $enabled && isset($persistent_elements[$key])) {
+                $selected_persistent[] = $persistent_elements[$key];
+            }
+        }
+
         $advanced_selectors = $this->parse_advanced_selectors($settings['advanced_selectors']);
 
         return array(
             'cssVars' => $css_vars,
             'excludeList' => $this->parse_exclude_list($settings['exclude_list']),
-            'sameElementRules' => array_values(array_merge($selected_shared, $advanced_selectors)),
+            'sameElementRules' => array_values(array_merge($selected_shared, $selected_persistent, $advanced_selectors)),
             'nameScope' => sanitize_key($settings['name_scope']),
             'enableRootTransition' => '1' === (string) $settings['root_transition'],
             'respectReducedMotion' => '1' === (string) $settings['respect_reduced_motion'],
@@ -745,6 +801,26 @@ class ACE_Plugin {
                 </label>
             <?php endforeach; ?>
         </div>
+        <?php
+    }
+
+    /**
+     * Render persistent region checkboxes.
+     */
+    public function render_persistent_elements_field() {
+        $settings = $this->get_settings();
+        $presets = self::persistent_element_presets();
+        ?>
+        <div class="ace-grid">
+            <?php foreach ($presets as $key => $preset) : ?>
+                <label class="ace-card">
+                    <strong><?php echo esc_html($preset['label']); ?></strong>
+                    <span><?php echo esc_html($preset['selector']); ?></span>
+                    <input type="checkbox" name="<?php echo esc_attr(ACE_OPTION_NAME . '[persistent_elements][' . $key . ']'); ?>" value="1" <?php checked(isset($settings['persistent_elements'][$key]) ? $settings['persistent_elements'][$key] : '0', '1'); ?>>
+                </label>
+            <?php endforeach; ?>
+        </div>
+        <p class="description"><?php echo esc_html__('Use these for persistent page chrome like header, footer, navigation, or sidebar regions. They are given stable transition names so they remain visually consistent instead of being part of the root page swap.', 'animated-continuity-effects'); ?></p>
         <?php
     }
 

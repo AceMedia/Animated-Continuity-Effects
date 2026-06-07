@@ -701,6 +701,7 @@ class ACE_Plugin {
             'respectReducedMotion' => '1' === (string) $settings['respect_reduced_motion'],
             'transitionMode' => $settings['transition_mode'],
             'animationStyle' => isset($settings['animation_style']) && isset(self::animation_styles()[$settings['animation_style']]) ? $settings['animation_style'] : 'fade',
+            'activeClickPairing' => false,
         );
     }
 

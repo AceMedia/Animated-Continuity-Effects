@@ -10,6 +10,7 @@
   const respectReducedMotion = config.respectReducedMotion !== false;
   const transitionMode = config.transitionMode || 'cross-document';
   const animationStyle = typeof config.animationStyle === 'string' && config.animationStyle ? config.animationStyle : 'fade';
+  const activeClickPairing = config.activeClickPairing === true;
   const debugEnabled = config.debug === true;
   const shellSelectors = Array.isArray(config.shellSelectors) && config.shellSelectors.length
     ? config.shellSelectors
@@ -201,6 +202,10 @@
       if (element.style && 'viewTransitionClass' in element.style) {
         element.style.viewTransitionClass = '';
       }
+
+      if (element.removeAttribute) {
+        element.removeAttribute('data-ace-original-view-transition-name');
+      }
     });
   }
 
@@ -222,6 +227,45 @@
     });
 
     return Array.from(new Set(duplicates));
+  }
+
+  function countViewTransitionName(rootOrDocument, name) {
+    const root = rootOrDocument && rootOrDocument.querySelectorAll ? rootOrDocument : document;
+    let count = 0;
+
+    if (!name) {
+      return count;
+    }
+
+    root.querySelectorAll('*').forEach((element) => {
+      if (element.style && element.style.viewTransitionName === name) {
+        count += 1;
+      }
+    });
+
+    return count;
+  }
+
+  function removeViewTransitionName(rootOrDocument, name) {
+    const root = rootOrDocument && rootOrDocument.querySelectorAll ? rootOrDocument : document;
+
+    if (!name) {
+      return;
+    }
+
+    root.querySelectorAll('*').forEach((element) => {
+      if (!element.style || element.style.viewTransitionName !== name) {
+        return;
+      }
+
+      if (element.hasAttribute && element.hasAttribute('data-ace-original-view-transition-name')) {
+        element.style.viewTransitionName = element.getAttribute('data-ace-original-view-transition-name') || '';
+        element.removeAttribute('data-ace-original-view-transition-name');
+        return;
+      }
+
+      element.style.viewTransitionName = '';
+    });
   }
 
   function getSharedNameForElement(element, rule, index, context) {
@@ -489,6 +533,19 @@
     return assigned;
   }
 
+  function assignActiveTransitionName(element, name) {
+    if (!element || !element.style || !name) {
+      return false;
+    }
+
+    if (element.setAttribute && !element.hasAttribute('data-ace-original-view-transition-name')) {
+      element.setAttribute('data-ace-original-view-transition-name', element.style.viewTransitionName || '');
+    }
+
+    element.style.viewTransitionName = name;
+    return true;
+  }
+
   function applyActiveClickPairNames(rootOrDocument, context, phase) {
     const root = rootOrDocument && rootOrDocument.querySelector ? rootOrDocument : document;
     if (!context) {
@@ -499,12 +556,16 @@
 
     if (phase === 'current') {
       if (context.clickedImage && root.contains && root.contains(context.clickedImage)) {
-        context.clickedImage.style.viewTransitionName = context.activeFeaturedImageName;
+        assignActiveTransitionName(context.clickedImage, context.activeFeaturedImageName);
         result.featured = 1;
       }
 
-      if (context.clickedTitle && root.contains && root.contains(context.clickedTitle)) {
-        context.clickedTitle.style.viewTransitionName = context.activeTitleName;
+      const titleElement = context.clickedTitle && context.clickedTitle.matches && context.clickedTitle.matches('a')
+        ? context.clickedTitle.closest('.entry-title, .wp-block-post-title, h1, h2, h3') || context.clickedTitle
+        : context.clickedTitle;
+
+      if (titleElement && root.contains && root.contains(titleElement)) {
+        assignActiveTransitionName(titleElement, context.activeTitleName);
         result.title = 1;
       }
 
@@ -514,13 +575,13 @@
     if (phase === 'incoming') {
       const featured = findCandidateFeaturedImage(root, context);
       if (featured) {
-        featured.style.viewTransitionName = context.activeFeaturedImageName;
+        assignActiveTransitionName(featured, context.activeFeaturedImageName);
         result.featured = 1;
       }
 
       const title = findCandidateTitle(root, context);
       if (title) {
-        title.style.viewTransitionName = context.activeTitleName;
+        assignActiveTransitionName(title, context.activeTitleName);
         result.title = 1;
       }
     }
@@ -665,10 +726,37 @@
   }
 
   function countActivePairNames(root, context) {
-    const scope = root && root.querySelectorAll ? root : document;
     return {
-      featured: context && context.activeFeaturedImageName ? scope.querySelectorAll('[style*="view-transition-name="' + context.activeFeaturedImageName + '"]').length : 0,
-      title: context && context.activeTitleName ? scope.querySelectorAll('[style*="view-transition-name="' + context.activeTitleName + '"]').length : 0,
+      featured: context && context.activeFeaturedImageName ? countViewTransitionName(root, context.activeFeaturedImageName) : 0,
+      title: context && context.activeTitleName ? countViewTransitionName(root, context.activeTitleName) : 0,
+    };
+  }
+
+  function validateActiveClickPairs(currentRoot, incomingRoot, context, currentPair, incomingPair) {
+    const counts = {
+      current: countActivePairNames(currentRoot, context),
+      incoming: countActivePairNames(incomingRoot, context),
+    };
+
+    if (!context || !activeClickPairing) {
+      return counts;
+    }
+
+    if ((currentPair.featured || incomingPair.featured) && (counts.current.featured !== 1 || counts.incoming.featured !== 1)) {
+      log('active featured pair incomplete, falling back to generic names', counts);
+      removeViewTransitionName(currentRoot, context.activeFeaturedImageName);
+      removeViewTransitionName(incomingRoot, context.activeFeaturedImageName);
+    }
+
+    if ((currentPair.title || incomingPair.title) && (counts.current.title !== 1 || counts.incoming.title !== 1)) {
+      log('active title pair incomplete, falling back to generic names', counts);
+      removeViewTransitionName(currentRoot, context.activeTitleName);
+      removeViewTransitionName(incomingRoot, context.activeTitleName);
+    }
+
+    return {
+      current: countActivePairNames(currentRoot, context),
+      incoming: countActivePairNames(incomingRoot, context),
     };
   }
 
@@ -720,7 +808,9 @@
         clearAceViewTransitionNames(nextDoc);
 
         applySharedElementNamesTo(document, null);
-        const currentPair = applyActiveClickPairNames(document, context, 'current');
+        const currentPair = context && activeClickPairing
+          ? applyActiveClickPairNames(document, context, 'current')
+          : { featured: 0, title: 0 };
         const currentDuplicates = findDuplicateTransitionNames(document);
         if (currentDuplicates.length) {
           log('duplicate transition names', currentDuplicates);
@@ -729,21 +819,28 @@
         const nextShellClone = nextShell.element.cloneNode(true);
         clearAceViewTransitionNames(nextShellClone);
         applySharedElementNamesTo(nextShellClone, null);
-        const incomingPair = applyActiveClickPairNames(nextShellClone, context, 'incoming');
+        const incomingPair = context && activeClickPairing
+          ? applyActiveClickPairNames(nextShellClone, context, 'incoming')
+          : { featured: 0, title: 0 };
         const incomingDuplicates = findDuplicateTransitionNames(nextShellClone);
         if (incomingDuplicates.length) {
           log('duplicate transition names', incomingDuplicates);
         }
 
+        const activeCounts = validateActiveClickPairs(document, nextShellClone, context, currentPair, incomingPair);
         const incomingShell = nextShellClone;
         const shellName = nextShell.selector;
-        const currentActiveCount = currentPair;
-        const incomingActiveCount = incomingPair;
+        const currentActiveCount = activeCounts.current;
+        const incomingActiveCount = activeCounts.incoming;
         const hasSharedTransition = currentActiveCount.featured > 0 || currentActiveCount.title > 0 || incomingActiveCount.featured > 0 || incomingActiveCount.title > 0;
 
         document.documentElement.classList.toggle('ace-has-active-shared-transition', hasSharedTransition);
 
+        log('navigation mode', context && activeClickPairing ? 'click-active' : 'generic', url.href);
         log('shared transition summary', {
+          shellSelector: shellName,
+          currentGenericDuplicates: currentDuplicates,
+          incomingGenericDuplicates: incomingDuplicates,
           current: currentActiveCount,
           incoming: incomingActiveCount,
         });
@@ -816,9 +913,10 @@
     event.preventDefault();
     log('intercepting navigation', anchor.href);
     const clickedUrl = new URL(anchor.getAttribute('href'), window.location.href);
+    const clickedContext = activeClickPairing ? buildClickContext(anchor) : null;
     loadPage(clickedUrl, {
       replaceHistory: false,
-      clickedContext: buildClickContext(anchor),
+      clickedContext,
       historyState: {
         fromUrl: window.location.href,
       },

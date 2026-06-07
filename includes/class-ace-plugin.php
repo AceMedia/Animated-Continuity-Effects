@@ -60,6 +60,7 @@ class ACE_Plugin {
     public static function default_settings() {
         return array(
             'motion_preset' => 'gentle',
+            'animation_style' => 'fade',
             'duration' => '350ms',
             'timing_function' => 'cubic-bezier(0.2, 0, 0, 1)',
             'delay' => '0ms',
@@ -114,6 +115,51 @@ class ACE_Plugin {
                 'duration' => '900ms',
                 'timing_function' => 'cubic-bezier(0.22, 1, 0.36, 1)',
                 'delay' => '0ms',
+            ),
+        );
+    }
+
+    /**
+     * Animation styles for the root transition.
+     *
+     * @return array<string, array<string, string>>
+     */
+    private static function animation_styles() {
+        return array(
+            'fade' => array(
+                'label' => 'Fade',
+                'old_keyframes' => 'from { opacity: 1; transform: none; } to { opacity: 0; transform: none; }',
+                'new_keyframes' => 'from { opacity: 0; transform: none; } to { opacity: 1; transform: none; }',
+            ),
+            'slide_up' => array(
+                'label' => 'Slide up',
+                'old_keyframes' => 'from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-12px); }',
+                'new_keyframes' => 'from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); }',
+            ),
+            'slide_right' => array(
+                'label' => 'Slide from right',
+                'old_keyframes' => 'from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(-16px); }',
+                'new_keyframes' => 'from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: translateX(0); }',
+            ),
+            'slide_left' => array(
+                'label' => 'Slide from left',
+                'old_keyframes' => 'from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(16px); }',
+                'new_keyframes' => 'from { opacity: 0; transform: translateX(-16px); } to { opacity: 1; transform: translateX(0); }',
+            ),
+            'zoom' => array(
+                'label' => 'Zoom',
+                'old_keyframes' => 'from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(0.96); }',
+                'new_keyframes' => 'from { opacity: 0; transform: scale(1.04); } to { opacity: 1; transform: scale(1); }',
+            ),
+            'flip_3d' => array(
+                'label' => '3D flip',
+                'old_keyframes' => 'from { opacity: 1; transform: perspective(1000px) rotateY(0deg); transform-origin: center center; } to { opacity: 0; transform: perspective(1000px) rotateY(-18deg); transform-origin: center center; }',
+                'new_keyframes' => 'from { opacity: 0; transform: perspective(1000px) rotateY(18deg); transform-origin: center center; } to { opacity: 1; transform: perspective(1000px) rotateY(0deg); transform-origin: center center; }',
+            ),
+            'rotate' => array(
+                'label' => 'Rotate',
+                'old_keyframes' => 'from { opacity: 1; transform: rotate(0deg) scale(1); } to { opacity: 0; transform: rotate(-4deg) scale(0.98); }',
+                'new_keyframes' => 'from { opacity: 0; transform: rotate(4deg) scale(1.02); } to { opacity: 1; transform: rotate(0deg) scale(1); }',
             ),
         );
     }
@@ -186,6 +232,7 @@ class ACE_Plugin {
         }
 
         $settings = wp_parse_args($stored, self::default_settings());
+        $settings['animation_style'] = isset($settings['animation_style']) ? $settings['animation_style'] : self::default_settings()['animation_style'];
         $settings['shared_elements'] = wp_parse_args($settings['shared_elements'], self::default_settings()['shared_elements']);
         $settings['persistent_elements'] = wp_parse_args($settings['persistent_elements'], self::default_settings()['persistent_elements']);
 
@@ -246,6 +293,14 @@ class ACE_Plugin {
             'transition_mode',
             __('Transition mode', 'animated-continuity-effects'),
             array($this, 'render_transition_mode_field'),
+            'animated-continuity-effects',
+            'ace_main_section'
+        );
+
+        add_settings_field(
+            'animation_style',
+            __('Animation style', 'animated-continuity-effects'),
+            array($this, 'render_animation_style_field'),
             'animated-continuity-effects',
             'ace_main_section'
         );
@@ -331,6 +386,10 @@ class ACE_Plugin {
         $presets = self::motion_presets();
         $preset_key = isset($input['motion_preset']) ? sanitize_key(wp_unslash($input['motion_preset'])) : 'gentle';
         $output['motion_preset'] = isset($presets[$preset_key]) ? $preset_key : 'gentle';
+
+        $animation_styles = self::animation_styles();
+        $animation_style = isset($input['animation_style']) ? sanitize_key(wp_unslash($input['animation_style'])) : 'fade';
+        $output['animation_style'] = isset($animation_styles[$animation_style]) ? $animation_style : 'fade';
 
         $shared_defaults = $defaults['shared_elements'];
         $shared_input = isset($input['shared_elements']) && is_array($input['shared_elements']) ? $input['shared_elements'] : array();
@@ -431,16 +490,19 @@ class ACE_Plugin {
         }
 
         $settings = $this->get_settings();
+        $animation_styles = self::animation_styles();
         $config = $this->build_frontend_config($settings);
         echo '<style id="ace-view-transition-inline-css">';
         echo '@view-transition { navigation: auto; }';
         echo 'html.ace-view-transitions-enabled { view-transition-name: root; }';
         echo '::view-transition { background: transparent; }';
         echo '::view-transition-group(root) { animation-duration: ' . esc_html($config['cssVars']['--ace-view-transition-duration']) . '; animation-timing-function: ' . esc_html($config['cssVars']['--ace-view-transition-timing-function']) . '; }';
-        echo '::view-transition-old(root) { animation: ace-root-out ' . esc_html($config['cssVars']['--ace-view-transition-duration']) . ' ' . esc_html($config['cssVars']['--ace-view-transition-timing-function']) . ' both; }';
-        echo '::view-transition-new(root) { animation: ace-root-in ' . esc_html($config['cssVars']['--ace-view-transition-duration']) . ' ' . esc_html($config['cssVars']['--ace-view-transition-timing-function']) . ' both; }';
-        echo '@keyframes ace-root-out { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-12px); } }';
-        echo '@keyframes ace-root-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }';
+        echo '::view-transition-old(root) { animation: ace-root-out-' . esc_html($config['animationStyle']) . ' ' . esc_html($config['cssVars']['--ace-view-transition-duration']) . ' ' . esc_html($config['cssVars']['--ace-view-transition-timing-function']) . ' both; }';
+        echo '::view-transition-new(root) { animation: ace-root-in-' . esc_html($config['animationStyle']) . ' ' . esc_html($config['cssVars']['--ace-view-transition-duration']) . ' ' . esc_html($config['cssVars']['--ace-view-transition-timing-function']) . ' both; }';
+        foreach ($animation_styles as $style_key => $style) {
+            echo '@keyframes ace-root-out-' . esc_html($style_key) . ' { ' . esc_html($style['old_keyframes']) . ' }';
+            echo '@keyframes ace-root-in-' . esc_html($style_key) . ' { ' . esc_html($style['new_keyframes']) . ' }';
+        }
         echo '</style>';
     }
 
@@ -630,6 +692,7 @@ class ACE_Plugin {
             'enableRootTransition' => '1' === (string) $settings['root_transition'],
             'respectReducedMotion' => '1' === (string) $settings['respect_reduced_motion'],
             'transitionMode' => $settings['transition_mode'],
+            'animationStyle' => isset($settings['animation_style']) && isset(self::animation_styles()[$settings['animation_style']]) ? $settings['animation_style'] : 'fade',
         );
     }
 
@@ -729,6 +792,22 @@ class ACE_Plugin {
             <option value="same-document" <?php selected($settings['transition_mode'], 'same-document'); ?>><?php echo esc_html__('Same-document', 'animated-continuity-effects'); ?></option>
         </select>
         <p class="description"><?php echo esc_html__('Cross-document is the browser navigation path; same-document is useful for intra-page UI transitions if you later add them.', 'animated-continuity-effects'); ?></p>
+        <?php
+    }
+
+    /**
+     * Render animation style field.
+     */
+    public function render_animation_style_field() {
+        $settings = $this->get_settings();
+        $styles = self::animation_styles();
+        ?>
+        <select name="<?php echo esc_attr(ACE_OPTION_NAME . '[animation_style]'); ?>">
+            <?php foreach ($styles as $key => $style) : ?>
+                <option value="<?php echo esc_attr($key); ?>" <?php selected(isset($settings['animation_style']) ? $settings['animation_style'] : 'fade', $key); ?>><?php echo esc_html($style['label']); ?></option>
+            <?php endforeach; ?>
+        </select>
+        <p class="description"><?php echo esc_html__('Choose how the page swap enters and exits: subtle fade, slide, zoom, rotate, or a 3D flip.', 'animated-continuity-effects'); ?></p>
         <?php
     }
 

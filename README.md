@@ -5,6 +5,7 @@ Animated Continuity Effects adds configurable View Transition API support to Wor
 ## Features
 
 - Set custom CSS variables for transition duration, timing function, delay, and related motion controls.
+- Choose from multiple root animation styles, including fade, side slide, zoom, rotate, and 3D flip.
 - Exclude specific classes or IDs with a comma-separated list.
 - Apply shared element transitions to common WordPress surfaces such as featured images, site logos, titles, and avatars.
 - Mark persistent page regions like headers, footers, navigation, and sidebars so they stay visually stable during navigation.

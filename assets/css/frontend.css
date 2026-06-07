@@ -16,11 +16,17 @@ html.ace-view-transitions-enabled {
 }
 
 ::view-transition-old(root) {
-  animation: var(--ace-view-transition-old-animation, ace-root-out-fade) var(--ace-view-transition-duration, 350ms) var(--ace-view-transition-timing-function, cubic-bezier(0.2, 0, 0, 1)) both;
+  animation-name: var(--ace-view-transition-old-animation, ace-root-out-fade);
+  animation-duration: var(--ace-view-transition-duration, 350ms);
+  animation-timing-function: var(--ace-view-transition-timing-function, cubic-bezier(0.2, 0, 0, 1));
+  animation-fill-mode: both;
 }
 
 ::view-transition-new(root) {
-  animation: var(--ace-view-transition-new-animation, ace-root-in-fade) var(--ace-view-transition-duration, 350ms) var(--ace-view-transition-timing-function, cubic-bezier(0.2, 0, 0, 1)) both;
+  animation-name: var(--ace-view-transition-new-animation, ace-root-in-fade);
+  animation-duration: var(--ace-view-transition-duration, 350ms);
+  animation-timing-function: var(--ace-view-transition-timing-function, cubic-bezier(0.2, 0, 0, 1));
+  animation-fill-mode: both;
 }
 
 @keyframes ace-root-out-fade {

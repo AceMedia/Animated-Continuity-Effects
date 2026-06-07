@@ -9,6 +9,8 @@
   const enableRootTransition = config.enableRootTransition !== false;
   const respectReducedMotion = config.respectReducedMotion !== false;
   const transitionMode = config.transitionMode || 'cross-document';
+  const isSameDocumentMode = transitionMode === 'same-document';
+  const isCrossDocumentMode = transitionMode === 'cross-document';
   const animationStyle = typeof config.animationStyle === 'string' && config.animationStyle ? config.animationStyle : 'fade';
   const activeClickPairing = config.activeClickPairing === true;
   const debugEnabled = config.debug === true;
@@ -889,6 +891,11 @@
   }
 
   function onClick(event) {
+    if (!isSameDocumentMode) {
+      log('skip click interception: transition mode is', transitionMode);
+      return;
+    }
+
     if (
       event.defaultPrevented ||
       event.button !== 0 ||
@@ -924,6 +931,10 @@
   }
 
   function onPopState(event) {
+    if (!isSameDocumentMode) {
+      return;
+    }
+
     const url = new URL(window.location.href);
     log('popstate', url.href);
     loadPage(url, {
@@ -936,14 +947,27 @@
   function init() {
     applyCssVariables();
     setDocumentHints();
+    log('transition mode', transitionMode);
+
     if (supportsViewTransitions) {
       enableDocumentTransition();
       applySharedElementNames();
       setupNavigationGuards();
     }
 
-    document.addEventListener('click', onClick, true);
-    window.addEventListener('popstate', onPopState);
+    if (isSameDocumentMode) {
+      document.addEventListener('click', onClick, true);
+      window.addEventListener('popstate', onPopState);
+      log('same-document router enabled');
+      return;
+    }
+
+    if (isCrossDocumentMode) {
+      log('cross-document mode: native browser navigation, click interception disabled');
+      return;
+    }
+
+    log('unknown transition mode: native browser navigation, click interception disabled');
   }
 
   if (document.readyState === 'loading') {

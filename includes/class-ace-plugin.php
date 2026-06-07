@@ -461,21 +461,21 @@ class ACE_Plugin {
         $config = $this->build_frontend_config($settings);
 
         wp_enqueue_style(
-            'ace-frontend',
+            'ace-view-transitions-frontend',
             ACE_PLUGIN_URL . 'assets/css/frontend.css',
             array(),
             '0.1.0'
         );
         wp_register_script(
-            'ace-frontend',
+            'ace-view-transitions-frontend',
             ACE_PLUGIN_URL . 'assets/js/frontend.js',
             array(),
             '0.1.0',
             true
         );
-        wp_enqueue_script('ace-frontend');
+        wp_enqueue_script('ace-view-transitions-frontend');
         wp_add_inline_script(
-            'ace-frontend',
+            'ace-view-transitions-frontend',
             'window.ACE_VIEW_TRANSITIONS = ' . wp_json_encode($config) . ';',
             'before'
         );

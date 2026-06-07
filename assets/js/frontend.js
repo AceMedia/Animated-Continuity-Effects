@@ -947,6 +947,8 @@
   function init() {
     applyCssVariables();
     setDocumentHints();
+    document.documentElement.setAttribute('data-ace-transition-mode', transitionMode);
+    document.documentElement.setAttribute('data-ace-router', isSameDocumentMode ? 'same-document' : 'native');
     log('transition mode', transitionMode);
 
     if (supportsViewTransitions) {
@@ -962,8 +964,15 @@
       return;
     }
 
+    document.addEventListener('click', (event) => {
+      const anchor = event.target && event.target.closest ? event.target.closest('a[href]') : null;
+      if (anchor && debugEnabled) {
+        window.console.debug('[ACE]', 'native click allowed', anchor.href);
+      }
+    }, true);
+
     if (isCrossDocumentMode) {
-      log('cross-document mode: native browser navigation, click interception disabled');
+      log('native navigation enabled');
       return;
     }
 

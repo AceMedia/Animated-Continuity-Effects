@@ -459,18 +459,20 @@ class ACE_Plugin {
 
         $settings = $this->get_settings();
         $config = $this->build_frontend_config($settings);
+        $frontend_css = ACE_PLUGIN_DIR . 'assets/css/frontend.css';
+        $frontend_js = ACE_PLUGIN_DIR . 'assets/js/frontend.js';
 
         wp_enqueue_style(
             'ace-view-transitions-frontend',
             ACE_PLUGIN_URL . 'assets/css/frontend.css',
             array(),
-            '0.1.0'
+            file_exists($frontend_css) ? (string) filemtime($frontend_css) : '0.1.0'
         );
         wp_register_script(
             'ace-view-transitions-frontend',
             ACE_PLUGIN_URL . 'assets/js/frontend.js',
             array(),
-            '0.1.0',
+            file_exists($frontend_js) ? (string) filemtime($frontend_js) : '0.1.0',
             true
         );
         wp_enqueue_script('ace-view-transitions-frontend');
@@ -509,152 +511,7 @@ class ACE_Plugin {
 
         $settings = $this->get_settings();
         $config = $this->build_frontend_config($settings);
-        ?>
-        <script id="ace-view-transition-inline-js">
-        window.ACE_VIEW_TRANSITIONS = <?php echo wp_json_encode($config); ?>;
-        (function () {
-            'use strict';
-            var config = window.ACE_VIEW_TRANSITIONS || {};
-            var cssVars = config.cssVars || {};
-            var excludeList = Array.isArray(config.excludeList) ? config.excludeList : [];
-            var sameElementRules = Array.isArray(config.sameElementRules) ? config.sameElementRules : [];
-            var enableRootTransition = config.enableRootTransition !== false;
-            var respectReducedMotion = config.respectReducedMotion !== false;
-            var supportsViewTransitions = 'startViewTransition' in document;
-            var animationStyle = typeof config.animationStyle === 'string' && config.animationStyle ? config.animationStyle : 'fade';
-
-            function applyCssVariables() {
-                var root = document.documentElement;
-                Object.keys(cssVars).forEach(function (key) {
-                    if (cssVars[key]) {
-                        root.style.setProperty(key, String(cssVars[key]));
-                    }
-                });
-            }
-
-            function hasExcludedMatch(root) {
-                if (!root || !excludeList.length) {
-                    return false;
-                }
-
-                return excludeList.some(function (selector) {
-                    try {
-                        return !!root.querySelector(selector);
-                    } catch (error) {
-                        return false;
-                    }
-                });
-            }
-
-            function slugify(value) {
-                return String(value)
-                    .toLowerCase()
-                    .replace(/[^a-z0-9]+/g, '-')
-                    .replace(/^-+|-+$/g, '')
-                    .slice(0, 40);
-            }
-
-            function scopeToken(rule, index) {
-                return slugify(['post', rule.scope || 'post', rule.label || index].join('-'));
-            }
-
-            function uniqueMatchName(base, index) {
-                return 'ace-' + base + '-' + index;
-            }
-
-            function enableDocumentTransition() {
-                if (!supportsViewTransitions || !enableRootTransition) {
-                    return;
-                }
-
-                document.documentElement.style.viewTransitionName = 'root';
-            }
-
-            function applySharedElementNames() {
-                var seen = new Set();
-
-                sameElementRules.forEach(function (rule, ruleIndex) {
-                    if (!rule || !rule.selector) {
-                        return;
-                    }
-
-                    var elements = [];
-                    try {
-                        elements = Array.from(document.querySelectorAll(rule.selector));
-                    } catch (error) {
-                        return;
-                    }
-
-                    elements.forEach(function (element, elementIndex) {
-                        var token = uniqueMatchName(scopeToken(rule, ruleIndex), elementIndex);
-                        if (seen.has(token)) {
-                            return;
-                        }
-
-                        seen.add(token);
-                        element.style.viewTransitionName = token;
-                    });
-                });
-            }
-
-            function setDocumentHints() {
-                document.documentElement.classList.add('ace-view-transitions-enabled');
-                document.documentElement.classList.remove(
-                    'ace-view-transition-style-fade',
-                    'ace-view-transition-style-slide_up',
-                    'ace-view-transition-style-slide_right',
-                    'ace-view-transition-style-slide_left',
-                    'ace-view-transition-style-zoom',
-                    'ace-view-transition-style-flip_3d',
-                    'ace-view-transition-style-rotate'
-                );
-                document.documentElement.classList.add('ace-view-transition-style-' + animationStyle);
-                document.documentElement.style.setProperty('--ace-view-transition-enabled', '1');
-            }
-
-            function setupNavigationGuards() {
-                window.addEventListener('pageswap', function (event) {
-                    if (!event || !event.viewTransition) {
-                        return;
-                    }
-
-                    if (hasExcludedMatch(document)) {
-                        event.viewTransition.skipTransition();
-                    }
-                });
-
-                window.addEventListener('pagereveal', function (event) {
-                    if (!event || !event.viewTransition) {
-                        return;
-                    }
-
-                    if (respectReducedMotion && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-                        event.viewTransition.skipTransition();
-                    }
-                });
-            }
-
-            function init() {
-                applyCssVariables();
-                setDocumentHints();
-
-                if (!supportsViewTransitions) {
-                    return;
-                }
-
-                enableDocumentTransition();
-                applySharedElementNames();
-                setupNavigationGuards();
-            }
-
-            if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', init, { once: true });
-            } else {
-                init();
-            }
-        }());
-        </script>
-        <?php
+        echo "\n<!-- ACE transitionMode: " . esc_html($config['transitionMode']) . " -->\n";
     }
 
     /**
@@ -664,6 +521,10 @@ class ACE_Plugin {
      * @return array<string, mixed>
      */
     private function build_frontend_config(array $settings) {
+        if (defined('ACE_FORCE_CROSS_DOCUMENT') && ACE_FORCE_CROSS_DOCUMENT) {
+            $settings['transition_mode'] = 'cross-document';
+        }
+
         $css_vars = array(
             '--ace-view-transition-duration' => $settings['duration'],
             '--ace-view-transition-timing-function' => $settings['timing_function'],
@@ -762,6 +623,8 @@ class ACE_Plugin {
         <div class="wrap ace-settings">
             <h1><?php echo esc_html__('Animated Continuity Effects', 'animated-continuity-effects'); ?></h1>
             <p><?php echo esc_html__('Control the view transition motion, exclusions, and shared element rules used on the frontend.', 'animated-continuity-effects'); ?></p>
+            <p><strong><?php echo esc_html__('Current saved transition mode:', 'animated-continuity-effects'); ?></strong> <?php echo esc_html($settings['transition_mode']); ?></p>
+            <p class="description"><?php echo esc_html__('Changing defaults in code does not change existing saved settings. Save this page to update the live mode.', 'animated-continuity-effects'); ?></p>
             <form action="options.php" method="post">
                 <?php
                 settings_fields('ace_settings_group');

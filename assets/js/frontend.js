@@ -11,7 +11,9 @@
   const transitionMode = config.transitionMode || 'cross-document';
   const animationStyle = typeof config.animationStyle === 'string' && config.animationStyle ? config.animationStyle : 'fade';
   const debugEnabled = config.debug === true;
-  const shellSelectors = ['main'];
+  const shellSelectors = Array.isArray(config.shellSelectors) && config.shellSelectors.length
+    ? config.shellSelectors
+    : ['main', '.wp-site-blocks > main', '#primary', '#content', '.site-main'];
   let navigationGuardsSetup = false;
 
   const supportsViewTransitions = 'startViewTransition' in document;
@@ -110,6 +112,33 @@
     return slugify(String(value || '').slice(0, 80));
   }
 
+  function getTextToken(element) {
+    if (!element) {
+      return '';
+    }
+
+    const text = element.textContent || '';
+    return text.trim() ? slugFromText(text) : '';
+  }
+
+  function getImageSrcToken(element) {
+    if (!element || !element.getAttribute) {
+      return '';
+    }
+
+    const src = element.getAttribute('src') || element.getAttribute('data-src') || element.getAttribute('data-lazy-src') || '';
+    if (!src) {
+      return '';
+    }
+
+    try {
+      const url = new URL(src, window.location.href);
+      return slugify(url.pathname.split('/').pop() || url.pathname || src);
+    } catch (error) {
+      return slugify(src.split('/').pop() || src);
+    }
+  }
+
   function getFallbackToken(element, index) {
     if (!element) {
       return 'ace-fallback-' + index;
@@ -150,6 +179,51 @@
     return 'ace-fallback-' + index;
   }
 
+  function getRootElement(rootOrDocument) {
+    if (!rootOrDocument) {
+      return document;
+    }
+
+    if (rootOrDocument.documentElement) {
+      return rootOrDocument.documentElement;
+    }
+
+    return rootOrDocument;
+  }
+
+  function clearAceViewTransitionNames(rootOrDocument) {
+    const root = rootOrDocument && rootOrDocument.querySelectorAll ? rootOrDocument : document;
+    root.querySelectorAll('[style*="view-transition-name"]').forEach((element) => {
+      if (element.style && element.style.viewTransitionName && element.style.viewTransitionName.indexOf('ace-') === 0) {
+        element.style.viewTransitionName = '';
+      }
+
+      if (element.style && 'viewTransitionClass' in element.style) {
+        element.style.viewTransitionClass = '';
+      }
+    });
+  }
+
+  function findDuplicateTransitionNames(rootOrDocument) {
+    const root = rootOrDocument && rootOrDocument.querySelectorAll ? rootOrDocument : document;
+    const names = new Map();
+    const duplicates = [];
+
+    root.querySelectorAll('*').forEach((element) => {
+      const name = element.style && element.style.viewTransitionName;
+      if (!name || name === 'none') {
+        return;
+      }
+
+      if (names.has(name)) {
+        duplicates.push(name);
+      }
+      names.set(name, element);
+    });
+
+    return Array.from(new Set(duplicates));
+  }
+
   function getSharedNameForElement(element, rule, index, context) {
     const label = slugify(rule && rule.label ? rule.label : 'shared');
     const scope = rule && rule.scope ? slugify(rule.scope) : 'post';
@@ -175,25 +249,21 @@
     }
 
     if (label === 'entry-title' || label === 'title') {
-      if (context && context.activeTitleName) {
-        return context.activeTitleName;
-      }
       const postId = getPostIdFromElement(element.closest('article, .wp-block-post, [class*="post-"]'));
-      return postId ? 'ace-entry-title-' + postId : 'ace-entry-title-' + slugFromText(element.textContent);
+      const token = getTextToken(element);
+      return postId ? 'ace-entry-title-' + postId : 'ace-entry-title-' + (token || index);
     }
 
     if (label === 'featured-image' || label === 'featured-image-img' || label === 'featured-image-image') {
       const article = element.closest('article, .wp-block-post, [class*="post-"]');
       const postId = getPostIdFromElement(article);
-      if (context && context.activeFeaturedImageName) {
-        return context.activeFeaturedImageName;
-      }
       if (postId) {
         return 'ace-featured-image-' + postId;
       }
       const img = element.tagName === 'IMG' ? element : element.querySelector && element.querySelector('img');
-      if (img && img.getAttribute('src')) {
-        return 'ace-featured-image-' + slugify(img.getAttribute('src').split('/').pop() || img.getAttribute('src'));
+      const srcToken = getImageSrcToken(img || element);
+      if (srcToken) {
+        return 'ace-featured-image-' + srcToken;
       }
       return 'ace-featured-image-' + index;
     }
@@ -242,6 +312,220 @@
 
   function applySharedElementNames() {
     return applySharedElementNamesTo(document);
+  }
+
+  function findClickedImage(anchor) {
+    if (!anchor) {
+      return null;
+    }
+
+    return (
+      anchor.querySelector('img.wp-post-image, .wp-block-post-featured-image img, .post-thumbnail img, .featured-image img, img') ||
+      (anchor.matches && anchor.matches('img') ? anchor : null) ||
+      (anchor.closest && anchor.closest('figure, .wp-block-post-featured-image, .post-thumbnail, .featured-image') ? anchor.closest('figure, .wp-block-post-featured-image, .post-thumbnail, .featured-image').querySelector('img') : null) ||
+      (anchor.closest && anchor.closest('article, .wp-block-post, [class*="post-"]') ? anchor.closest('article, .wp-block-post, [class*="post-"]').querySelector('img.wp-post-image, .wp-block-post-featured-image img, .post-thumbnail img, .featured-image img') : null)
+    );
+  }
+
+  function findClickedTitle(anchor) {
+    if (!anchor) {
+      return null;
+    }
+
+    return (
+      (anchor.closest && anchor.closest('.entry-title, .wp-block-post-title, h1, h2, h3')) ||
+      anchor.querySelector('.entry-title, .wp-block-post-title, h1, h2, h3') ||
+      (anchor.closest && anchor.closest('article, .wp-block-post, [class*="post-"]') ? anchor.closest('article, .wp-block-post, [class*="post-"]').querySelector('.entry-title a, .wp-block-post-title a, .entry-title, .wp-block-post-title') : null)
+    );
+  }
+
+  function getClickedTitleElement(anchor) {
+    const title = findClickedTitle(anchor);
+    if (!title) {
+      return null;
+    }
+
+    if (title.tagName === 'A') {
+      return title;
+    }
+
+    return title.closest && title.closest('a') ? title.closest('a') : title;
+  }
+
+  function findPostLikeContainer(anchor) {
+    return anchor ? anchor.closest('article, .wp-block-post, [class*="post-"], .wp-block-post-template__post') : null;
+  }
+
+  function getCandidatePostIdFromElement(element) {
+    if (!element) {
+      return '';
+    }
+
+    return getPostIdFromElement(element) || getPostIdFromElement(element.closest && element.closest('[class*="post-"]')) || '';
+  }
+
+  function buildClickContext(anchor) {
+    const card = findPostLikeContainer(anchor);
+    const clickedImage = findClickedImage(anchor) || (card && card.querySelector ? card.querySelector('.wp-post-image, .wp-block-post-featured-image img, .post-thumbnail img, .featured-image img') : null);
+    const clickedTitle = getClickedTitleElement(anchor) || (card && card.querySelector ? card.querySelector('.entry-title a, .wp-block-post-title a, .entry-title, .wp-block-post-title') : null);
+    const clickedPostId = getCandidatePostIdFromElement(card);
+    const clickedImageSrcToken = getImageSrcToken(clickedImage);
+    const clickedTitleToken = getTextToken(clickedTitle);
+    const href = anchor && anchor.href ? anchor.href : '';
+
+    const context = {
+      anchor: anchor || null,
+      href,
+      pathname: href ? (new URL(href, window.location.href)).pathname : '',
+      card: card || null,
+      clickedPostId: clickedPostId || '',
+      clickedImage: clickedImage || null,
+      clickedImageSrcToken: clickedImageSrcToken || '',
+      clickedTitle: clickedTitle || null,
+      clickedTitleToken: clickedTitleToken || '',
+      activeFeaturedImageName: 'ace-active-featured-image',
+      activeTitleName: 'ace-active-entry-title',
+    };
+
+    log('click context', {
+      clickedPostId: context.clickedPostId || 'none',
+      hasImage: !!context.clickedImage,
+      hasTitle: !!context.clickedTitle,
+      imageToken: context.clickedImageSrcToken || 'none',
+      titleToken: context.clickedTitleToken || 'none',
+    });
+
+    return context;
+  }
+
+  function findCandidateFeaturedImage(root, context) {
+    const scope = root && root.querySelector ? root : document;
+    let candidates = [];
+
+    try {
+      candidates = Array.from(scope.querySelectorAll('main .wp-post-image, main .wp-block-post-featured-image img, main .post-thumbnail img, main .featured-image img, article .wp-post-image, article .wp-block-post-featured-image img, article .post-thumbnail img, article .featured-image img, main img'));
+    } catch (error) {
+      candidates = [];
+    }
+
+    if (!candidates.length) {
+      return null;
+    }
+
+    if (context && context.clickedPostId) {
+      const postMatch = candidates.find((element) => {
+        const article = element.closest('article, .wp-block-post, [class*="post-"]');
+        return getCandidatePostIdFromElement(article) === context.clickedPostId;
+      });
+      if (postMatch) {
+        return postMatch;
+      }
+    }
+
+    if (context && context.clickedImageSrcToken) {
+      const srcMatch = candidates.find((element) => getImageSrcToken(element) === context.clickedImageSrcToken);
+      if (srcMatch) {
+        return srcMatch;
+      }
+    }
+
+    return candidates[0] || null;
+  }
+
+  function findCandidateTitle(root, context) {
+    const scope = root && root.querySelector ? root : document;
+    let candidates = [];
+
+    try {
+      candidates = Array.from(scope.querySelectorAll('main h1.entry-title, main h1.wp-block-post-title, main .entry-title, main .wp-block-post-title, main h1, article h1.entry-title, article h1.wp-block-post-title, article .entry-title, article .wp-block-post-title, article h1'));
+    } catch (error) {
+      candidates = [];
+    }
+
+    if (!candidates.length) {
+      return null;
+    }
+
+    if (context && context.clickedTitleToken) {
+      const titleMatch = candidates.find((element) => getTextToken(element) === context.clickedTitleToken);
+      if (titleMatch) {
+        return titleMatch;
+      }
+    }
+
+    return candidates[0] || null;
+  }
+
+  function assignTransitionNameOnce(root, name, preferredElement, selectorList) {
+    if (!root || !name || !preferredElement) {
+      return false;
+    }
+
+    const seen = [];
+    selectorList.forEach((selector) => {
+      try {
+        seen.push.apply(seen, Array.from(root.querySelectorAll(selector)));
+      } catch (error) {
+        // ignore invalid selector
+      }
+    });
+
+    let assigned = false;
+    seen.forEach((element) => {
+      if (element.style && element.style.viewTransitionName === name) {
+        if (element !== preferredElement) {
+          element.style.viewTransitionName = '';
+        } else {
+          assigned = true;
+        }
+      }
+    });
+
+    if (preferredElement.style) {
+      preferredElement.style.viewTransitionName = name;
+      assigned = true;
+    }
+
+    return assigned;
+  }
+
+  function applyActiveClickPairNames(rootOrDocument, context, phase) {
+    const root = rootOrDocument && rootOrDocument.querySelector ? rootOrDocument : document;
+    if (!context) {
+      return { featured: 0, title: 0 };
+    }
+
+    const result = { featured: 0, title: 0 };
+
+    if (phase === 'current') {
+      if (context.clickedImage && root.contains && root.contains(context.clickedImage)) {
+        context.clickedImage.style.viewTransitionName = context.activeFeaturedImageName;
+        result.featured = 1;
+      }
+
+      if (context.clickedTitle && root.contains && root.contains(context.clickedTitle)) {
+        context.clickedTitle.style.viewTransitionName = context.activeTitleName;
+        result.title = 1;
+      }
+
+      return result;
+    }
+
+    if (phase === 'incoming') {
+      const featured = findCandidateFeaturedImage(root, context);
+      if (featured) {
+        featured.style.viewTransitionName = context.activeFeaturedImageName;
+        result.featured = 1;
+      }
+
+      const title = findCandidateTitle(root, context);
+      if (title) {
+        title.style.viewTransitionName = context.activeTitleName;
+        result.title = 1;
+      }
+    }
+
+    return result;
   }
 
   function enableDocumentTransition() {
@@ -371,29 +655,6 @@
     return { element: null, selector: '' };
   }
 
-  function buildClickContext(anchor) {
-    const card = anchor ? anchor.closest('article, .wp-block-post, [class*="post-"]') : null;
-    const image = card && card.querySelector ? card.querySelector('.wp-post-image, .featured-image img, .post-thumbnail img') : null;
-    const title = card && card.querySelector ? card.querySelector('.entry-title, .wp-block-post-title') : null;
-    const postId = getPostIdFromElement(card);
-
-    const context = {
-      anchor: anchor || null,
-      card: card || null,
-      clickedPostId: postId || '',
-      activeFeaturedImageName: image ? (postId ? 'ace-active-featured-image-' + postId : 'ace-active-featured-image') : '',
-      activeTitleName: title ? (postId ? 'ace-active-entry-title-' + postId : 'ace-active-entry-title') : '',
-    };
-
-    log('click context', {
-      clickedPostId: context.clickedPostId || 'none',
-      hasImage: !!image,
-      hasTitle: !!title,
-    });
-
-    return context;
-  }
-
   function reinitializeFromDocument(doc) {
     applyCssVariables();
     setDocumentHints();
@@ -403,32 +664,36 @@
     return doc;
   }
 
-  function swapDocument(nextDoc, context) {
-    const nextShell = getShellElement(nextDoc);
+  function countActivePairNames(root, context) {
+    const scope = root && root.querySelectorAll ? root : document;
+    return {
+      featured: context && context.activeFeaturedImageName ? scope.querySelectorAll('[style*="view-transition-name="' + context.activeFeaturedImageName + '"]').length : 0,
+      title: context && context.activeTitleName ? scope.querySelectorAll('[style*="view-transition-name="' + context.activeTitleName + '"]').length : 0,
+    };
+  }
+
+  function swapDocument(preparedIncomingShell, nextDoc, shellSelector) {
     const currentShell = getShellElement(document);
 
     if (nextDoc.title) {
       document.title = nextDoc.title;
     }
 
-    if (nextShell.element && currentShell.element) {
-      const incomingShell = nextShell.element.cloneNode(true);
-      applySharedElementNamesTo(incomingShell, context);
-      currentShell.element.replaceWith(incomingShell);
-      log('swapped shell', nextShell.selector);
+    if (preparedIncomingShell && currentShell.element) {
+      currentShell.element.replaceWith(preparedIncomingShell);
+      log('swapped shell', shellSelector || 'main');
     } else {
       throw new Error('Missing main shell in navigation target');
     }
 
-    // Inline scripts are not re-executed here. This is the first stable pass
-    // for page-shell swaps and avoids duplicate execution on each navigation.
-    return reinitializeFromDocument(nextDoc);
+    return nextDoc;
   }
 
   function loadPage(url, options) {
     const navOptions = options || {};
     const shouldReplaceHistory = navOptions.replaceHistory === true;
     const context = navOptions.clickedContext || null;
+    const historyState = navOptions.historyState || null;
     return window.fetch(url.href, {
       credentials: 'same-origin',
       headers: {
@@ -445,16 +710,55 @@
       })
       .then((html) => {
         const nextDoc = new DOMParser().parseFromString(html, 'text/html');
-        if (!getShellElement(nextDoc).element) {
+        const nextShell = getShellElement(nextDoc);
+        const currentShell = getShellElement(document);
+        if (!nextShell.element || !currentShell.element) {
           throw new Error('Missing main shell in navigation target');
         }
-        applySharedElementNamesTo(document, context);
-        applySharedElementNamesTo(nextDoc, context);
-        document.documentElement.classList.toggle('ace-has-active-shared-transition', true);
-        const update = () => swapDocument(nextDoc, context);
+
+        clearAceViewTransitionNames(document);
+        clearAceViewTransitionNames(nextDoc);
+
+        applySharedElementNamesTo(document, null);
+        const currentPair = applyActiveClickPairNames(document, context, 'current');
+        const currentDuplicates = findDuplicateTransitionNames(document);
+        if (currentDuplicates.length) {
+          log('duplicate transition names', currentDuplicates);
+        }
+
+        const nextShellClone = nextShell.element.cloneNode(true);
+        clearAceViewTransitionNames(nextShellClone);
+        applySharedElementNamesTo(nextShellClone, null);
+        const incomingPair = applyActiveClickPairNames(nextShellClone, context, 'incoming');
+        const incomingDuplicates = findDuplicateTransitionNames(nextShellClone);
+        if (incomingDuplicates.length) {
+          log('duplicate transition names', incomingDuplicates);
+        }
+
+        const incomingShell = nextShellClone;
+        const shellName = nextShell.selector;
+        const currentActiveCount = currentPair;
+        const incomingActiveCount = incomingPair;
+        const hasSharedTransition = currentActiveCount.featured > 0 || currentActiveCount.title > 0 || incomingActiveCount.featured > 0 || incomingActiveCount.title > 0;
+
+        document.documentElement.classList.toggle('ace-has-active-shared-transition', hasSharedTransition);
+
+        log('shared transition summary', {
+          current: currentActiveCount,
+          incoming: incomingActiveCount,
+        });
+
+        const update = () => swapDocument(incomingShell, nextDoc, shellName);
 
         if (supportsViewTransitions) {
-          return document.startViewTransition(update).finished.then(() => ({
+          return document.startViewTransition(update).finished.then(() => {
+            reinitializeFromDocument(document);
+            document.documentElement.classList.remove('ace-has-active-shared-transition');
+            return {
+              url: url.href,
+              title: nextDoc.title || '',
+            };
+          }).then((result) => ({
             url: url.href,
             title: nextDoc.title || '',
           }));
@@ -463,6 +767,8 @@
         document.documentElement.classList.add('ace-view-transition-fade');
         update();
         document.documentElement.classList.remove('ace-view-transition-fade');
+        reinitializeFromDocument(document);
+        document.documentElement.classList.remove('ace-has-active-shared-transition');
 
         return Promise.resolve({
           url: url.href,
@@ -471,9 +777,9 @@
       })
       .then((result) => {
         if (shouldReplaceHistory) {
-          window.history.replaceState({ aceViewTransition: true, url: result.url }, '', result.url);
+          window.history.replaceState(Object.assign({ aceViewTransition: true, url: result.url }, historyState || {}), '', result.url);
         } else {
-          window.history.pushState({ aceViewTransition: true, url: result.url }, '', result.url);
+          window.history.pushState(Object.assign({ aceViewTransition: true, url: result.url }, historyState || {}), '', result.url);
         }
 
         document.dispatchEvent(new CustomEvent('ace:view-transition:navigated', { detail: { url: result.url } }));
@@ -509,22 +815,23 @@
 
     event.preventDefault();
     log('intercepting navigation', anchor.href);
-    loadPage(new URL(anchor.getAttribute('href'), window.location.href), {
+    const clickedUrl = new URL(anchor.getAttribute('href'), window.location.href);
+    loadPage(clickedUrl, {
       replaceHistory: false,
       clickedContext: buildClickContext(anchor),
+      historyState: {
+        fromUrl: window.location.href,
+      },
     });
   }
 
-  function onPopState() {
-    if (transitionMode !== 'same-document') {
-      return;
-    }
-
+  function onPopState(event) {
     const url = new URL(window.location.href);
     log('popstate', url.href);
     loadPage(url, {
       replaceHistory: true,
       clickedContext: null,
+      historyState: event && event.state ? event.state : null,
     });
   }
 

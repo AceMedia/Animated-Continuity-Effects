@@ -50,6 +50,23 @@ html.ace-view-transition-style-rotate {
   animation-timing-function: var(--ace-view-transition-timing-function, cubic-bezier(0.2, 0, 0, 1));
 }
 
+::view-transition-group(*) {
+  animation-duration: var(--ace-view-transition-duration, 350ms);
+  animation-timing-function: var(--ace-view-transition-timing-function, cubic-bezier(0.2, 0, 0, 1));
+  animation-fill-mode: both;
+}
+
+::view-transition-image-pair(*) {
+  isolation: isolate;
+}
+
+::view-transition-old(*),
+::view-transition-new(*) {
+  animation-duration: var(--ace-view-transition-duration, 350ms);
+  animation-timing-function: var(--ace-view-transition-timing-function, cubic-bezier(0.2, 0, 0, 1));
+  animation-fill-mode: both;
+}
+
 ::view-transition-old(root) {
   animation-name: var(--ace-view-transition-old-animation, ace-root-out-fade);
   animation-duration: var(--ace-view-transition-duration, 350ms);

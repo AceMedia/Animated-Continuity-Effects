@@ -203,7 +203,7 @@ class ACE_Plugin {
         return array(
             'site_header' => array(
                 'label' => 'Site header',
-                'selector' => 'header, .site-header, .wp-block-template-part header',
+                'selector' => 'header, .site-header, .wp-block-template-part, .wp-block-template-part header',
             ),
             'site_footer' => array(
                 'label' => 'Site footer',

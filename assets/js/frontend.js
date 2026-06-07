@@ -6,6 +6,8 @@
   const excludeList = Array.isArray(config.excludeList) ? config.excludeList : [];
   const sameElementRules = Array.isArray(config.sameElementRules) ? config.sameElementRules : [];
   const nameScope = typeof config.nameScope === 'string' && config.nameScope ? config.nameScope : 'post';
+  const enableRootTransition = config.enableRootTransition !== false;
+  const respectReducedMotion = config.respectReducedMotion !== false;
 
   const supportsViewTransitions = 'startViewTransition' in document && 'onpageswap' in window && 'onpagereveal' in window;
 
@@ -82,10 +84,11 @@
       return;
     }
 
-    document.documentElement.style.viewTransitionName = 'root';
-    if (document.documentElement.style) {
-      document.documentElement.style.setProperty('view-transition-navigation', 'auto');
+    if (!enableRootTransition) {
+      return;
     }
+
+    document.documentElement.style.viewTransitionName = 'root';
   }
 
   function shouldSkipTransition(activationElement) {
@@ -110,7 +113,7 @@
       if (!event || !event.viewTransition) {
         return;
       }
-      if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      if (respectReducedMotion && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
         event.viewTransition.skipTransition();
       }
     });

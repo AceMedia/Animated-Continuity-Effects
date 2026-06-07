@@ -2,7 +2,27 @@
   font-size: 12px;
 }
 
-.wrap ul {
-  list-style: disc;
-  padding-left: 1.5rem;
+.ace-settings .ace-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.ace-settings .ace-card {
+  background: #fff;
+  border: 1px solid #dcdcde;
+  border-radius: 10px;
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+}
+
+.ace-settings .ace-card span {
+  color: #646970;
+  font-size: 12px;
+}
+
+.ace-settings select,
+.ace-settings textarea {
+  max-width: 640px;
 }

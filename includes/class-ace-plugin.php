@@ -57,41 +57,83 @@ class ACE_Plugin {
      */
     public static function default_settings() {
         return array(
+            'motion_preset' => 'gentle',
             'duration' => '350ms',
             'timing_function' => 'cubic-bezier(0.2, 0, 0, 1)',
             'delay' => '0ms',
-            'fade_in' => 'auto',
-            'fade_out' => 'auto',
+            'transition_mode' => 'cross-document',
+            'root_transition' => '1',
+            'respect_reduced_motion' => '1',
+            'shared_elements' => array(
+                'featured_image' => '1',
+                'site_logo' => '1',
+                'entry_title' => '1',
+                'avatar' => '0',
+            ),
             'name_scope' => 'post',
             'exclude_list' => '',
-            'same_element_rules' => self::default_same_element_rules(),
+            'advanced_selectors' => '',
         );
     }
 
     /**
-     * Default shared element rules.
+     * Motion presets.
      *
-     * @return array<int, array<string, string>>
+     * @return array<string, array<string, string>>
      */
-    private static function default_same_element_rules() {
+    private static function motion_presets() {
         return array(
-            array(
+            'gentle' => array(
+                'label' => 'Gentle',
+                'duration' => '350ms',
+                'timing_function' => 'cubic-bezier(0.2, 0, 0, 1)',
+                'delay' => '0ms',
+            ),
+            'airy' => array(
+                'label' => 'Airy',
+                'duration' => '250ms',
+                'timing_function' => 'ease-out',
+                'delay' => '0ms',
+            ),
+            'dramatic' => array(
+                'label' => 'Dramatic',
+                'duration' => '650ms',
+                'timing_function' => 'cubic-bezier(0.16, 1, 0.3, 1)',
+                'delay' => '0ms',
+            ),
+            'slow' => array(
+                'label' => 'Slow',
+                'duration' => '900ms',
+                'timing_function' => 'cubic-bezier(0.22, 1, 0.36, 1)',
+                'delay' => '0ms',
+            ),
+        );
+    }
+
+    /**
+     * Shared element presets.
+     *
+     * @return array<string, array<string, string>>
+     */
+    private static function shared_element_presets() {
+        return array(
+            'featured_image' => array(
                 'label' => 'Featured image',
                 'selector' => '.wp-post-image, .featured-image img, .post-thumbnail img',
                 'scope' => 'post',
             ),
-            array(
+            'site_logo' => array(
                 'label' => 'Site logo',
                 'selector' => '.custom-logo, .site-logo img',
                 'scope' => 'site',
             ),
-            array(
+            'entry_title' => array(
                 'label' => 'Entry title',
                 'selector' => '.entry-title, .wp-block-post-title',
                 'scope' => 'post',
             ),
-            array(
-                'label' => 'Avatars',
+            'avatar' => array(
+                'label' => 'Avatar',
                 'selector' => '.avatar, .wp-block-avatar img',
                 'scope' => 'person',
             ),
@@ -109,7 +151,10 @@ class ACE_Plugin {
             $stored = array();
         }
 
-        return wp_parse_args($stored, self::default_settings());
+        $settings = wp_parse_args($stored, self::default_settings());
+        $settings['shared_elements'] = wp_parse_args($settings['shared_elements'], self::default_settings()['shared_elements']);
+
+        return $settings;
     }
 
     /**
@@ -145,63 +190,75 @@ class ACE_Plugin {
         );
 
         add_settings_field(
-            'duration',
-            __('Duration', 'animated-continuity-effects'),
-            array($this, 'render_text_field'),
+            'motion_preset',
+            __('Motion preset', 'animated-continuity-effects'),
+            array($this, 'render_motion_preset_field'),
+            'animated-continuity-effects',
+            'ace_main_section'
+        );
+
+        add_settings_field(
+            'transition_mode',
+            __('Transition mode', 'animated-continuity-effects'),
+            array($this, 'render_transition_mode_field'),
+            'animated-continuity-effects',
+            'ace_main_section'
+        );
+
+        add_settings_field(
+            'root_transition',
+            __('Root transition', 'animated-continuity-effects'),
+            array($this, 'render_toggle_field'),
             'animated-continuity-effects',
             'ace_main_section',
-            array('key' => 'duration', 'placeholder' => '350ms')
+            array('key' => 'root_transition', 'label' => __('Enable the page-wide transition root', 'animated-continuity-effects'))
+        );
+
+        add_settings_field(
+            'respect_reduced_motion',
+            __('Reduced motion', 'animated-continuity-effects'),
+            array($this, 'render_toggle_field'),
+            'animated-continuity-effects',
+            'ace_main_section',
+            array('key' => 'respect_reduced_motion', 'label' => __('Skip transitions when the user prefers reduced motion', 'animated-continuity-effects'))
+        );
+
+        add_settings_field(
+            'duration',
+            __('Duration', 'animated-continuity-effects'),
+            array($this, 'render_duration_field'),
+            'animated-continuity-effects',
+            'ace_main_section'
         );
 
         add_settings_field(
             'timing_function',
             __('Timing function', 'animated-continuity-effects'),
-            array($this, 'render_text_field'),
+            array($this, 'render_easing_field'),
             'animated-continuity-effects',
-            'ace_main_section',
-            array('key' => 'timing_function', 'placeholder' => 'cubic-bezier(0.2, 0, 0, 1)')
+            'ace_main_section'
         );
 
         add_settings_field(
-            'delay',
-            __('Delay', 'animated-continuity-effects'),
-            array($this, 'render_text_field'),
+            'shared_elements',
+            __('Shared elements', 'animated-continuity-effects'),
+            array($this, 'render_shared_elements_field'),
             'animated-continuity-effects',
-            'ace_main_section',
-            array('key' => 'delay', 'placeholder' => '0ms')
-        );
-
-        add_settings_field(
-            'fade_in',
-            __('Fade in', 'animated-continuity-effects'),
-            array($this, 'render_text_field'),
-            'animated-continuity-effects',
-            'ace_main_section',
-            array('key' => 'fade_in', 'placeholder' => 'auto')
-        );
-
-        add_settings_field(
-            'fade_out',
-            __('Fade out', 'animated-continuity-effects'),
-            array($this, 'render_text_field'),
-            'animated-continuity-effects',
-            'ace_main_section',
-            array('key' => 'fade_out', 'placeholder' => 'auto')
-        );
-
-        add_settings_field(
-            'name_scope',
-            __('Name scope', 'animated-continuity-effects'),
-            array($this, 'render_text_field'),
-            'animated-continuity-effects',
-            'ace_main_section',
-            array('key' => 'name_scope', 'placeholder' => 'post')
+            'ace_main_section'
         );
 
         add_settings_field(
             'exclude_list',
-            __('Excluded classes or IDs', 'animated-continuity-effects'),
-            array($this, 'render_textarea_field'),
+            __('Exclusions', 'animated-continuity-effects'),
+            array($this, 'render_exclusions_field'),
+            'animated-continuity-effects',
+            'ace_main_section'
+        );
+
+        add_settings_field(
+            'advanced_selectors',
+            __('Advanced selectors', 'animated-continuity-effects'),
+            array($this, 'render_advanced_selectors_field'),
             'animated-continuity-effects',
             'ace_main_section'
         );
@@ -218,10 +275,31 @@ class ACE_Plugin {
         $input = is_array($input) ? $input : array();
         $output = array();
 
-        foreach (array('duration', 'timing_function', 'delay', 'fade_in', 'fade_out', 'name_scope') as $key) {
-            $value = isset($input[$key]) ? wp_unslash($input[$key]) : $defaults[$key];
-            $output[$key] = sanitize_text_field($value);
+        $presets = self::motion_presets();
+        $preset_key = isset($input['motion_preset']) ? sanitize_key(wp_unslash($input['motion_preset'])) : 'gentle';
+        $output['motion_preset'] = isset($presets[$preset_key]) ? $preset_key : 'gentle';
+
+        $shared_defaults = $defaults['shared_elements'];
+        $shared_input = isset($input['shared_elements']) && is_array($input['shared_elements']) ? $input['shared_elements'] : array();
+        $output['shared_elements'] = array();
+        foreach ($shared_defaults as $key => $value) {
+            $output['shared_elements'][$key] = isset($shared_input[$key]) && '1' === (string) wp_unslash($shared_input[$key]) ? '1' : '0';
         }
+
+        $output['transition_mode'] = isset($input['transition_mode']) ? sanitize_key(wp_unslash($input['transition_mode'])) : 'cross-document';
+        $output['transition_mode'] = in_array($output['transition_mode'], array('cross-document', 'same-document'), true) ? $output['transition_mode'] : 'cross-document';
+
+        $output['root_transition'] = isset($input['root_transition']) && '1' === (string) wp_unslash($input['root_transition']) ? '1' : '0';
+        $output['respect_reduced_motion'] = isset($input['respect_reduced_motion']) && '1' === (string) wp_unslash($input['respect_reduced_motion']) ? '1' : '0';
+
+        $duration = isset($input['duration']) ? sanitize_text_field(wp_unslash($input['duration'])) : $defaults['duration'];
+        $timing_function = isset($input['timing_function']) ? sanitize_text_field(wp_unslash($input['timing_function'])) : $defaults['timing_function'];
+        $delay = isset($input['delay']) ? sanitize_text_field(wp_unslash($input['delay'])) : $defaults['delay'];
+        $output['duration'] = $duration;
+        $output['timing_function'] = $timing_function;
+        $output['delay'] = $delay;
+
+        $output['name_scope'] = sanitize_key($defaults['name_scope']);
 
         $exclude_list = isset($input['exclude_list']) ? wp_unslash($input['exclude_list']) : '';
         $exclude_items = preg_split('/[,\n]+/', (string) $exclude_list);
@@ -229,7 +307,7 @@ class ACE_Plugin {
         $exclude_items = array_values(array_unique($exclude_items));
         $output['exclude_list'] = implode(', ', array_map('sanitize_text_field', $exclude_items));
 
-        $output['same_element_rules'] = $defaults['same_element_rules'];
+        $output['advanced_selectors'] = isset($input['advanced_selectors']) ? sanitize_textarea_field(wp_unslash($input['advanced_selectors'])) : '';
 
         return $output;
     }
@@ -295,15 +373,26 @@ class ACE_Plugin {
             '--ace-view-transition-duration' => $settings['duration'],
             '--ace-view-transition-timing-function' => $settings['timing_function'],
             '--ace-view-transition-delay' => $settings['delay'],
-            '--ace-view-transition-fade-in' => $settings['fade_in'],
-            '--ace-view-transition-fade-out' => $settings['fade_out'],
         );
+
+        $shared_elements = self::shared_element_presets();
+        $selected_shared = array();
+        foreach ($settings['shared_elements'] as $key => $enabled) {
+            if ('1' === (string) $enabled && isset($shared_elements[$key])) {
+                $selected_shared[] = $shared_elements[$key];
+            }
+        }
+
+        $advanced_selectors = $this->parse_advanced_selectors($settings['advanced_selectors']);
 
         return array(
             'cssVars' => $css_vars,
             'excludeList' => $this->parse_exclude_list($settings['exclude_list']),
-            'sameElementRules' => $this->prepare_same_element_rules($settings['same_element_rules']),
+            'sameElementRules' => array_values(array_merge($selected_shared, $advanced_selectors)),
             'nameScope' => sanitize_key($settings['name_scope']),
+            'enableRootTransition' => '1' === (string) $settings['root_transition'],
+            'respectReducedMotion' => '1' === (string) $settings['respect_reduced_motion'],
+            'transitionMode' => $settings['transition_mode'],
         );
     }
 
@@ -321,31 +410,30 @@ class ACE_Plugin {
     }
 
     /**
-     * Prepare same-element rules.
+     * Parse advanced selectors from the textarea.
      *
-     * @param array<int, array<string, string>> $rules Rules.
+     * @param string $raw Raw text.
      * @return array<int, array<string, string>>
      */
-    private function prepare_same_element_rules(array $rules) {
+    private function parse_advanced_selectors($raw) {
         $prepared = array();
+        $lines = preg_split('/\r\n|\r|\n/', (string) $raw);
 
-        foreach ($rules as $rule) {
-            if (!is_array($rule)) {
+        foreach ((array) $lines as $line) {
+            $line = trim((string) $line);
+            if ('' === $line || false === strpos($line, '|')) {
                 continue;
             }
 
-            $label = isset($rule['label']) ? sanitize_text_field($rule['label']) : '';
-            $selector = isset($rule['selector']) ? sanitize_text_field($rule['selector']) : '';
-            $scope = isset($rule['scope']) ? sanitize_key($rule['scope']) : 'post';
-
+            list($label, $selector) = array_map('trim', explode('|', $line, 2));
             if ('' === $label || '' === $selector) {
                 continue;
             }
 
             $prepared[] = array(
-                'label' => $label,
-                'selector' => $selector,
-                'scope' => $scope,
+                'label' => sanitize_text_field($label),
+                'selector' => sanitize_text_field($selector),
+                'scope' => 'advanced',
             );
         }
 
@@ -362,7 +450,7 @@ class ACE_Plugin {
 
         $settings = $this->get_settings();
         ?>
-        <div class="wrap">
+        <div class="wrap ace-settings">
             <h1><?php echo esc_html__('Animated Continuity Effects', 'animated-continuity-effects'); ?></h1>
             <p><?php echo esc_html__('Control the view transition motion, exclusions, and shared element rules used on the frontend.', 'animated-continuity-effects'); ?></p>
             <form action="options.php" method="post">
@@ -372,44 +460,132 @@ class ACE_Plugin {
                 submit_button();
                 ?>
             </form>
-            <h2><?php echo esc_html__('Shared element presets', 'animated-continuity-effects'); ?></h2>
-            <p><?php echo esc_html__('These selectors target elements that can animate across pages when the markup matches on both sides of the transition.', 'animated-continuity-effects'); ?></p>
-            <ul>
-                <?php foreach ($settings['same_element_rules'] as $rule) : ?>
-                    <li><strong><?php echo esc_html($rule['label']); ?></strong>: <code><?php echo esc_html($rule['selector']); ?></code></li>
-                <?php endforeach; ?>
-            </ul>
         </div>
         <?php
     }
 
     /**
-     * Render a text field.
+     * Render a motion preset field.
      *
      * @param array<string, mixed> $args Arguments.
      */
-    public function render_text_field($args) {
+    public function render_motion_preset_field() {
         $settings = $this->get_settings();
-        $key = isset($args['key']) ? $args['key'] : '';
-        $value = isset($settings[$key]) ? $settings[$key] : '';
-        $placeholder = isset($args['placeholder']) ? $args['placeholder'] : '';
+        $presets = self::motion_presets();
         ?>
-        <input type="text"
-               class="regular-text"
-               name="<?php echo esc_attr(ACE_OPTION_NAME . '[' . $key . ']'); ?>"
-               value="<?php echo esc_attr($value); ?>"
-               placeholder="<?php echo esc_attr($placeholder); ?>">
+        <select name="<?php echo esc_attr(ACE_OPTION_NAME . '[motion_preset]'); ?>">
+            <?php foreach ($presets as $key => $preset) : ?>
+                <option value="<?php echo esc_attr($key); ?>" <?php selected($settings['motion_preset'], $key); ?>><?php echo esc_html($preset['label']); ?></option>
+            <?php endforeach; ?>
+        </select>
         <?php
     }
 
     /**
-     * Render a textarea field.
+     * Render a transition mode field.
      */
-    public function render_textarea_field() {
+    public function render_transition_mode_field() {
+        $settings = $this->get_settings();
+        ?>
+        <select name="<?php echo esc_attr(ACE_OPTION_NAME . '[transition_mode]'); ?>">
+            <option value="cross-document" <?php selected($settings['transition_mode'], 'cross-document'); ?>><?php echo esc_html__('Cross-document', 'animated-continuity-effects'); ?></option>
+            <option value="same-document" <?php selected($settings['transition_mode'], 'same-document'); ?>><?php echo esc_html__('Same-document', 'animated-continuity-effects'); ?></option>
+        </select>
+        <p class="description"><?php echo esc_html__('Cross-document is the browser navigation path; same-document is useful for intra-page UI transitions if you later add them.', 'animated-continuity-effects'); ?></p>
+        <?php
+    }
+
+    /**
+     * Render a toggle field.
+     *
+     * @param array<string, mixed> $args Arguments.
+     */
+    public function render_toggle_field($args) {
+        $settings = $this->get_settings();
+        $key = isset($args['key']) ? $args['key'] : '';
+        $label = isset($args['label']) ? $args['label'] : '';
+        ?>
+        <label>
+            <input type="checkbox" name="<?php echo esc_attr(ACE_OPTION_NAME . '[' . $key . ']'); ?>" value="1" <?php checked(isset($settings[$key]) ? $settings[$key] : '0', '1'); ?>>
+            <?php echo esc_html($label); ?>
+        </label>
+        <?php
+    }
+
+    /**
+     * Render the duration field.
+     */
+    public function render_duration_field() {
+        $settings = $this->get_settings();
+        ?>
+        <select name="<?php echo esc_attr(ACE_OPTION_NAME . '[duration]'); ?>">
+            <?php foreach (array('150ms', '250ms', '350ms', '500ms', '700ms', '900ms') as $value) : ?>
+                <option value="<?php echo esc_attr($value); ?>" <?php selected($settings['duration'], $value); ?>><?php echo esc_html($value); ?></option>
+            <?php endforeach; ?>
+        </select>
+        <?php
+    }
+
+    /**
+     * Render the easing field.
+     */
+    public function render_easing_field() {
+        $settings = $this->get_settings();
+        $options = array(
+            'ease' => 'Ease',
+            'ease-out' => 'Ease out',
+            'ease-in-out' => 'Ease in out',
+            'cubic-bezier(0.2, 0, 0, 1)' => 'Smooth',
+            'cubic-bezier(0.16, 1, 0.3, 1)' => 'Snappy',
+            'linear' => 'Linear',
+        );
+        ?>
+        <select name="<?php echo esc_attr(ACE_OPTION_NAME . '[timing_function]'); ?>">
+            <?php foreach ($options as $value => $label) : ?>
+                <option value="<?php echo esc_attr($value); ?>" <?php selected($settings['timing_function'], $value); ?>><?php echo esc_html($label); ?></option>
+            <?php endforeach; ?>
+        </select>
+        <?php
+    }
+
+    /**
+     * Render shared element checkboxes.
+     */
+    public function render_shared_elements_field() {
+        $settings = $this->get_settings();
+        $presets = self::shared_element_presets();
+        ?>
+        <div class="ace-grid">
+            <?php foreach ($presets as $key => $preset) : ?>
+                <label class="ace-card">
+                    <strong><?php echo esc_html($preset['label']); ?></strong>
+                    <span><?php echo esc_html($preset['selector']); ?></span>
+                    <input type="checkbox" name="<?php echo esc_attr(ACE_OPTION_NAME . '[shared_elements][' . $key . ']'); ?>" value="1" <?php checked(isset($settings['shared_elements'][$key]) ? $settings['shared_elements'][$key] : '0', '1'); ?>>
+                </label>
+            <?php endforeach; ?>
+        </div>
+        <?php
+    }
+
+    /**
+     * Render exclusion field.
+     */
+    public function render_exclusions_field() {
         $settings = $this->get_settings();
         ?>
         <textarea class="large-text" rows="4" name="<?php echo esc_attr(ACE_OPTION_NAME . '[exclude_list]'); ?>"><?php echo esc_textarea($settings['exclude_list']); ?></textarea>
         <p class="description"><?php echo esc_html__('Comma-separated classes or IDs, for example: .no-transition, #cart, .skip-view-transition', 'animated-continuity-effects'); ?></p>
+        <?php
+    }
+
+    /**
+     * Render advanced selectors.
+     */
+    public function render_advanced_selectors_field() {
+        $settings = $this->get_settings();
+        ?>
+        <textarea class="large-text" rows="4" name="<?php echo esc_attr(ACE_OPTION_NAME . '[advanced_selectors]'); ?>"><?php echo esc_textarea($settings['advanced_selectors']); ?></textarea>
+        <p class="description"><?php echo esc_html__('Optional. One selector per line in the form: Label | selector. This is for custom shared elements beyond the presets.', 'animated-continuity-effects'); ?></p>
         <?php
     }
 }

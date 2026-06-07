@@ -50,6 +50,8 @@ class ACE_Plugin {
         add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_assets'));
         add_action('wp_head', array($this, 'output_frontend_inline_styles'), 20);
         add_action('wp_head', array($this, 'output_frontend_inline_bootstrap'), 30);
+        add_filter('render_block', array($this, 'apply_server_rendered_transition_names'), 20, 2);
+        add_action('update_option_' . ACE_OPTION_NAME, array($this, 'flush_cache_after_settings_update'), 10, 2);
     }
 
     /**
@@ -237,6 +239,156 @@ class ACE_Plugin {
         $settings['persistent_elements'] = wp_parse_args($settings['persistent_elements'], self::default_settings()['persistent_elements']);
 
         return $settings;
+    }
+
+    /**
+     * Check if a shared element preset is enabled.
+     *
+     * @param string $key Preset key.
+     * @return bool
+     */
+    private function is_shared_element_enabled($key) {
+        $settings = $this->get_settings();
+        return isset($settings['shared_elements'][$key]) && '1' === (string) $settings['shared_elements'][$key];
+    }
+
+    /**
+     * Check if a persistent element preset is enabled.
+     *
+     * @param string $key Preset key.
+     * @return bool
+     */
+    private function is_persistent_element_enabled($key) {
+        $settings = $this->get_settings();
+        return isset($settings['persistent_elements'][$key]) && '1' === (string) $settings['persistent_elements'][$key];
+    }
+
+    /**
+     * Append a view-transition-name style to the first matching HTML tag.
+     *
+     * @param string $html HTML.
+     * @param string $tag Tag name.
+     * @param string $name Transition name.
+     * @return string
+     */
+    private function add_view_transition_name_to_first_tag($html, $tag, $name) {
+        if ('' === $html || '' === $tag || '' === $name) {
+            return $html;
+        }
+
+        $name = sanitize_html_class($name);
+        if ('' === $name) {
+            return $html;
+        }
+
+        if (class_exists('WP_HTML_Tag_Processor')) {
+            $processor = new WP_HTML_Tag_Processor($html);
+            if ($processor->next_tag(array('tag_name' => strtoupper($tag)))) {
+                $style = (string) $processor->get_attribute('style');
+                $style = rtrim(trim($style), ';');
+                $style = '' === $style ? 'view-transition-name: ' . $name . ';' : $style . '; view-transition-name: ' . $name . ';';
+                $processor->set_attribute('style', $style);
+                return $processor->get_updated_html();
+            }
+        }
+
+        return preg_replace_callback(
+            '/<' . preg_quote($tag, '/') . '\b([^>]*)>/i',
+            function ($matches) use ($tag, $name) {
+                $attributes = $matches[1];
+                if (preg_match('/\sstyle=(["\'])(.*?)\1/i', $attributes, $style_match)) {
+                    $new_style = rtrim(trim($style_match[2]), ';') . '; view-transition-name: ' . $name . ';';
+                    $attributes = str_replace($style_match[0], ' style=' . $style_match[1] . esc_attr($new_style) . $style_match[1], $attributes);
+                    return '<' . $tag . $attributes . '>';
+                }
+
+                return '<' . $tag . $attributes . ' style="' . esc_attr('view-transition-name: ' . $name . ';') . '">';
+            },
+            $html,
+            1
+        );
+    }
+
+    /**
+     * Add server-rendered transition names before native cross-document capture.
+     *
+     * @param string $block_content Rendered block HTML.
+     * @param array<string, mixed> $block Parsed block.
+     * @return string
+     */
+    public function apply_server_rendered_transition_names($block_content, $block) {
+        if (is_admin() || '' === $block_content || !is_array($block) || empty($block['blockName'])) {
+            return $block_content;
+        }
+
+        $block_name = (string) $block['blockName'];
+        $post_id = get_the_ID();
+
+        if ('core/post-featured-image' === $block_name && $this->is_shared_element_enabled('featured_image') && $post_id) {
+            return $this->add_view_transition_name_to_first_tag($block_content, 'img', 'ace-featured-image-' . (int) $post_id);
+        }
+
+        if ('core/post-title' === $block_name && $this->is_shared_element_enabled('entry_title') && $post_id) {
+            $transition_name = 'ace-entry-title-' . (int) $post_id;
+            $updated = $this->add_view_transition_name_to_first_tag($block_content, 'a', $transition_name);
+            if ($updated !== $block_content) {
+                return $updated;
+            }
+
+            $updated = $this->add_view_transition_name_to_first_tag($block_content, 'h1', $transition_name);
+            if ($updated !== $block_content) {
+                return $updated;
+            }
+
+            $updated = $this->add_view_transition_name_to_first_tag($block_content, 'h2', $transition_name);
+            return $updated !== $block_content ? $updated : $this->add_view_transition_name_to_first_tag($block_content, 'h3', $transition_name);
+        }
+
+        if ('core/site-logo' === $block_name && $this->is_shared_element_enabled('site_logo')) {
+            return $this->add_view_transition_name_to_first_tag($block_content, 'img', 'ace-site-logo');
+        }
+
+        if ('core/navigation' === $block_name && $this->is_persistent_element_enabled('primary_nav')) {
+            return $this->add_view_transition_name_to_first_tag($block_content, 'nav', 'ace-primary-nav');
+        }
+
+        if ('core/template-part' === $block_name) {
+            if ($this->is_persistent_element_enabled('site_header')) {
+                $block_content = $this->add_view_transition_name_to_first_tag($block_content, 'header', 'ace-site-header');
+            }
+
+            if ($this->is_persistent_element_enabled('site_footer')) {
+                $block_content = $this->add_view_transition_name_to_first_tag($block_content, 'footer', 'ace-site-footer');
+            }
+        }
+
+        return $block_content;
+    }
+
+    /**
+     * Clear page caches when settings change.
+     *
+     * @param mixed $old_value Old option value.
+     * @param mixed $value New option value.
+     */
+    public function flush_cache_after_settings_update($old_value, $value) {
+        if ($old_value === $value) {
+            return;
+        }
+
+        if (function_exists('wp_cache_flush')) {
+            wp_cache_flush();
+        }
+
+        if (function_exists('ace_redis_cache')) {
+            $redis_cache = ace_redis_cache();
+            if ($redis_cache && method_exists($redis_cache, 'get_cache_manager')) {
+                $cache_manager = $redis_cache->get_cache_manager();
+                if ($cache_manager && method_exists($cache_manager, 'clear_all_cache')) {
+                    $cache_manager->clear_all_cache();
+                }
+            }
+        }
     }
 
     /**

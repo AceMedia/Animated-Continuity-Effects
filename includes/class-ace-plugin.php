@@ -292,9 +292,10 @@ class ACE_Plugin {
      * @param string $html HTML.
      * @param string $tag Tag name.
      * @param string $name Transition name.
+     * @param bool $unique Whether this name must only appear once in the document.
      * @return string
      */
-    private function add_view_transition_name_to_first_tag($html, $tag, $name) {
+    private function add_view_transition_name_to_first_tag($html, $tag, $name, $unique = true) {
         if ('' === $html || '' === $tag || '' === $name) {
             return $html;
         }
@@ -307,7 +308,7 @@ class ACE_Plugin {
         if (class_exists('WP_HTML_Tag_Processor')) {
             $processor = new WP_HTML_Tag_Processor($html);
             if ($processor->next_tag(array('tag_name' => strtoupper($tag)))) {
-                if (!$this->reserve_server_transition_name($name)) {
+                if ($unique && !$this->reserve_server_transition_name($name)) {
                     return $html;
                 }
 
@@ -321,8 +322,8 @@ class ACE_Plugin {
 
         return preg_replace_callback(
             '/<' . preg_quote($tag, '/') . '\b([^>]*)>/i',
-            function ($matches) use ($tag, $name) {
-                if (!$this->reserve_server_transition_name($name)) {
+            function ($matches) use ($tag, $name, $unique) {
+                if ($unique && !$this->reserve_server_transition_name($name)) {
                     return $matches[0];
                 }
 
@@ -355,7 +356,7 @@ class ACE_Plugin {
             return $html;
         }
 
-        return $this->add_view_transition_name_to_first_tag($html, 'img', 'ace-featured-image-' . (int) $post_id);
+        return $this->add_view_transition_name_to_first_tag($html, 'img', 'ace-featured-image-' . (int) $post_id, false);
     }
 
     /**
@@ -422,7 +423,7 @@ class ACE_Plugin {
         $post_id = get_the_ID();
 
         if ('core/post-featured-image' === $block_name && $this->is_shared_element_enabled('featured_image') && $post_id) {
-            return $this->add_view_transition_name_to_first_tag($block_content, 'img', 'ace-featured-image-' . (int) $post_id);
+            return $this->add_view_transition_name_to_first_tag($block_content, 'img', 'ace-featured-image-' . (int) $post_id, false);
         }
 
         if ('core/post-title' === $block_name && $this->is_shared_element_enabled('entry_title') && $post_id) {

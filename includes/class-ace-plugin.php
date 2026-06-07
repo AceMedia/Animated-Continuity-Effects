@@ -51,6 +51,7 @@ class ACE_Plugin {
         add_action('wp_head', array($this, 'output_frontend_inline_styles'), 20);
         add_action('wp_head', array($this, 'output_frontend_inline_bootstrap'), 30);
         add_filter('render_block', array($this, 'apply_server_rendered_transition_names'), 20, 2);
+        add_filter('post_thumbnail_html', array($this, 'apply_post_thumbnail_transition_name'), 20, 5);
         add_action('update_option_' . ACE_OPTION_NAME, array($this, 'flush_cache_after_settings_update'), 10, 2);
     }
 
@@ -310,6 +311,67 @@ class ACE_Plugin {
     }
 
     /**
+     * Add transition names to post thumbnail HTML rendered outside block callbacks.
+     *
+     * @param string $html Post thumbnail HTML.
+     * @param int $post_id Post ID.
+     * @param int $post_thumbnail_id Thumbnail attachment ID.
+     * @param string|array<int, int|string> $size Image size.
+     * @param string|array<string, mixed> $attr Image attributes.
+     * @return string
+     */
+    public function apply_post_thumbnail_transition_name($html, $post_id, $post_thumbnail_id, $size, $attr) {
+        if (is_admin() || !$post_id || !$this->is_shared_element_enabled('featured_image')) {
+            return $html;
+        }
+
+        return $this->add_view_transition_name_to_first_tag($html, 'img', 'ace-featured-image-' . (int) $post_id);
+    }
+
+    /**
+     * Add transition names to post title anchors rendered by latest-post style blocks.
+     *
+     * @param string $html Block HTML.
+     * @return string
+     */
+    private function add_transition_names_to_title_links($html) {
+        if ('' === $html || !$this->is_shared_element_enabled('entry_title')) {
+            return $html;
+        }
+
+        $allow_all_links = false !== strpos($html, 'wp-block-post-title');
+
+        return preg_replace_callback(
+            '/<a\b([^>]*)>/i',
+            function ($matches) use ($allow_all_links) {
+                $attributes = $matches[1];
+                $is_title_link = $allow_all_links || preg_match('/\bclass=(["\'])(?=[^"\']*wp-block-latest-posts__post-title)[^"\']*\1/i', $attributes);
+                if (!$is_title_link) {
+                    return $matches[0];
+                }
+
+                if (!preg_match('/\shref=(["\'])(.*?)\1/i', $attributes, $href_match)) {
+                    return $matches[0];
+                }
+
+                $post_id = url_to_postid(html_entity_decode($href_match[2]));
+                if (!$post_id) {
+                    return $matches[0];
+                }
+
+                if (preg_match('/\sstyle=(["\'])(.*?)\1/i', $attributes, $style_match)) {
+                    $new_style = rtrim(trim($style_match[2]), ';') . '; view-transition-name: ace-entry-title-' . (int) $post_id . ';';
+                    $attributes = str_replace($style_match[0], ' style=' . $style_match[1] . esc_attr($new_style) . $style_match[1], $attributes);
+                    return '<a' . $attributes . '>';
+                }
+
+                return '<a' . $attributes . ' style="' . esc_attr('view-transition-name: ace-entry-title-' . (int) $post_id . ';') . '">';
+            },
+            $html
+        );
+    }
+
+    /**
      * Add server-rendered transition names before native cross-document capture.
      *
      * @param string $block_content Rendered block HTML.
@@ -362,7 +424,7 @@ class ACE_Plugin {
             }
         }
 
-        return $block_content;
+        return $this->add_transition_names_to_title_links($block_content);
     }
 
     /**

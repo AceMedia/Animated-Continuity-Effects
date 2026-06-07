@@ -6,6 +6,47 @@ html.ace-view-transitions-enabled {
   view-transition-name: root;
 }
 
+::view-transition {
+  background: transparent;
+}
+
+::view-transition-group(root) {
+  animation-duration: var(--ace-view-transition-duration, 350ms);
+  animation-timing-function: var(--ace-view-transition-timing-function, cubic-bezier(0.2, 0, 0, 1));
+}
+
+::view-transition-old(root) {
+  animation: ace-root-out var(--ace-view-transition-duration, 350ms) var(--ace-view-transition-timing-function, cubic-bezier(0.2, 0, 0, 1)) both;
+}
+
+::view-transition-new(root) {
+  animation: ace-root-in var(--ace-view-transition-duration, 350ms) var(--ace-view-transition-timing-function, cubic-bezier(0.2, 0, 0, 1)) both;
+}
+
+@keyframes ace-root-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+}
+
+@keyframes ace-root-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-group(*),
   ::view-transition-image-pair(*),

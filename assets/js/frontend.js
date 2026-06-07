@@ -305,10 +305,6 @@
       return;
     }
 
-    if (transitionMode !== 'same-document') {
-      return;
-    }
-
     if (respectReducedMotion && isReducedMotion()) {
       log('skip: reduced motion');
       return;

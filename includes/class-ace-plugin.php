@@ -490,19 +490,12 @@ class ACE_Plugin {
         }
 
         $settings = $this->get_settings();
-        $animation_styles = self::animation_styles();
         $config = $this->build_frontend_config($settings);
         echo '<style id="ace-view-transition-inline-css">';
         echo '@view-transition { navigation: auto; }';
         echo 'html.ace-view-transitions-enabled { view-transition-name: root; }';
         echo '::view-transition { background: transparent; }';
         echo '::view-transition-group(root) { animation-duration: ' . esc_html($config['cssVars']['--ace-view-transition-duration']) . '; animation-timing-function: ' . esc_html($config['cssVars']['--ace-view-transition-timing-function']) . '; }';
-        echo '::view-transition-old(root) { animation-name: ace-root-out-' . esc_html($config['animationStyle']) . '; animation-duration: ' . esc_html($config['cssVars']['--ace-view-transition-duration']) . '; animation-timing-function: ' . esc_html($config['cssVars']['--ace-view-transition-timing-function']) . '; animation-fill-mode: both; }';
-        echo '::view-transition-new(root) { animation-name: ace-root-in-' . esc_html($config['animationStyle']) . '; animation-duration: ' . esc_html($config['cssVars']['--ace-view-transition-duration']) . '; animation-timing-function: ' . esc_html($config['cssVars']['--ace-view-transition-timing-function']) . '; animation-fill-mode: both; }';
-        foreach ($animation_styles as $style_key => $style) {
-            echo '@keyframes ace-root-out-' . esc_html($style_key) . ' { ' . esc_html($style['old_keyframes']) . ' }';
-            echo '@keyframes ace-root-in-' . esc_html($style_key) . ' { ' . esc_html($style['new_keyframes']) . ' }';
-        }
         echo '</style>';
     }
 
@@ -528,6 +521,7 @@ class ACE_Plugin {
             var enableRootTransition = config.enableRootTransition !== false;
             var respectReducedMotion = config.respectReducedMotion !== false;
             var supportsViewTransitions = 'startViewTransition' in document;
+            var animationStyle = typeof config.animationStyle === 'string' && config.animationStyle ? config.animationStyle : 'fade';
 
             function applyCssVariables() {
                 var root = document.documentElement;
@@ -605,6 +599,16 @@ class ACE_Plugin {
 
             function setDocumentHints() {
                 document.documentElement.classList.add('ace-view-transitions-enabled');
+                document.documentElement.classList.remove(
+                    'ace-view-transition-style-fade',
+                    'ace-view-transition-style-slide_up',
+                    'ace-view-transition-style-slide_right',
+                    'ace-view-transition-style-slide_left',
+                    'ace-view-transition-style-zoom',
+                    'ace-view-transition-style-flip_3d',
+                    'ace-view-transition-style-rotate'
+                );
+                document.documentElement.classList.add('ace-view-transition-style-' + animationStyle);
                 document.documentElement.style.setProperty('--ace-view-transition-enabled', '1');
             }
 

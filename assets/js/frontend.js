@@ -11,7 +11,7 @@
   const transitionMode = config.transitionMode || 'cross-document';
   const animationStyle = typeof config.animationStyle === 'string' && config.animationStyle ? config.animationStyle : 'fade';
   const debugEnabled = config.debug === true;
-  const shellSelectors = ['main', '.wp-site-blocks', '#page', 'body'];
+  const shellSelectors = ['main'];
   let navigationGuardsSetup = false;
 
   const supportsViewTransitions = 'startViewTransition' in document;
@@ -368,7 +368,7 @@
       }
     }
 
-    return { element: doc.body || doc.documentElement, selector: 'body' };
+    return { element: null, selector: '' };
   }
 
   function buildClickContext(anchor) {
@@ -406,30 +406,18 @@
   function swapDocument(nextDoc, context) {
     const nextShell = getShellElement(nextDoc);
     const currentShell = getShellElement(document);
-    const nextBody = nextDoc.body ? nextDoc.body.cloneNode(true) : null;
 
     if (nextDoc.title) {
       document.title = nextDoc.title;
     }
 
-    if (nextShell.element && nextShell.selector !== 'body' && currentShell.element && currentShell.selector === nextShell.selector) {
+    if (nextShell.element && currentShell.element) {
       const incomingShell = nextShell.element.cloneNode(true);
       applySharedElementNamesTo(incomingShell, context);
       currentShell.element.replaceWith(incomingShell);
       log('swapped shell', nextShell.selector);
-    } else if (nextShell.element && nextShell.selector !== 'body') {
-      const incomingShell = nextShell.element.cloneNode(true);
-      applySharedElementNamesTo(incomingShell, context);
-      if (nextBody && document.body) {
-        document.body.innerHTML = nextBody.innerHTML;
-      }
-      log('swapped content shell only', nextShell.selector);
-    } else if (nextBody) {
-      document.body.replaceWith(nextBody);
-      log('swapped body', 'body');
-    } else if (nextShell.element && nextShell.selector === 'body') {
-      document.body.innerHTML = nextShell.element.innerHTML;
-      log('swapped shell', 'body-fallback');
+    } else {
+      throw new Error('Missing main shell in navigation target');
     }
 
     // Inline scripts are not re-executed here. This is the first stable pass
@@ -457,6 +445,9 @@
       })
       .then((html) => {
         const nextDoc = new DOMParser().parseFromString(html, 'text/html');
+        if (!getShellElement(nextDoc).element) {
+          throw new Error('Missing main shell in navigation target');
+        }
         applySharedElementNamesTo(document, context);
         applySharedElementNamesTo(nextDoc, context);
         document.documentElement.classList.toggle('ace-has-active-shared-transition', true);

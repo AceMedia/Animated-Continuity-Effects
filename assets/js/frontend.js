@@ -14,6 +14,7 @@
   const animationStyle = typeof config.animationStyle === 'string' && config.animationStyle ? config.animationStyle : 'fade';
   const activeClickPairing = config.activeClickPairing === true;
   const debugEnabled = config.debug === true;
+  const debugDisableSharedElements = config.debugDisableSharedElements === true;
   const shellSelectors = Array.isArray(config.shellSelectors) && config.shellSelectors.length
     ? config.shellSelectors
     : ['main', '.wp-site-blocks > main', '#primary', '#content', '.site-main'];
@@ -241,6 +242,19 @@
 
     root.querySelectorAll('*').forEach((element) => {
       if (element.style && element.style.viewTransitionName === name) {
+        count += 1;
+      }
+    });
+
+    return count;
+  }
+
+  function countNamedElements(rootOrDocument) {
+    const root = rootOrDocument && rootOrDocument.querySelectorAll ? rootOrDocument : document;
+    let count = 0;
+
+    root.querySelectorAll('*').forEach((element) => {
+      if (element.style && element.style.viewTransitionName && element.style.viewTransitionName !== 'none') {
         count += 1;
       }
     });
@@ -718,13 +732,19 @@
     return { element: null, selector: '' };
   }
 
-  function reinitializeFromDocument(doc) {
+  function reinitializeFromDocument(scope) {
     applyCssVariables();
     setDocumentHints();
     enableDocumentTransition();
-    applySharedElementNamesTo(doc || document);
+
+    if (!debugDisableSharedElements) {
+      const shell = getShellElement(document);
+      const sharedScope = scope && scope.querySelector ? scope : shell.element || document;
+      applySharedElementNamesTo(sharedScope, null);
+    }
+
     setupNavigationGuards();
-    return doc;
+    return scope;
   }
 
   function countActivePairNames(root, context) {
@@ -762,15 +782,13 @@
     };
   }
 
-  function swapDocument(preparedIncomingShell, nextDoc, shellSelector) {
-    const currentShell = getShellElement(document);
-
+  function swapDocument(currentShellElement, preparedIncomingShell, nextDoc, shellSelector) {
     if (nextDoc.title) {
       document.title = nextDoc.title;
     }
 
-    if (preparedIncomingShell && currentShell.element) {
-      currentShell.element.replaceWith(preparedIncomingShell);
+    if (preparedIncomingShell && currentShellElement) {
+      currentShellElement.replaceWith(preparedIncomingShell);
       log('swapped shell', shellSelector || 'main');
     } else {
       throw new Error('Missing main shell in navigation target');
@@ -784,6 +802,7 @@
     const shouldReplaceHistory = navOptions.replaceHistory === true;
     const context = navOptions.clickedContext || null;
     const historyState = navOptions.historyState || null;
+    const source = navOptions.source || (shouldReplaceHistory ? 'popstate' : 'click');
     return window.fetch(url.href, {
       credentials: 'same-origin',
       headers: {
@@ -806,39 +825,60 @@
           throw new Error('Missing main shell in navigation target');
         }
 
-        clearAceViewTransitionNames(document);
-        clearAceViewTransitionNames(nextDoc);
+        const nextShellClone = nextShell.element.cloneNode(true);
+        const currentScope = currentShell.element;
+        const incomingScope = nextShellClone;
+        const shellName = nextShell.selector || currentShell.selector;
 
-        applySharedElementNamesTo(document, null);
-        const currentPair = context && activeClickPairing
-          ? applyActiveClickPairNames(document, context, 'current')
+        clearAceViewTransitionNames(document);
+        clearAceViewTransitionNames(incomingScope);
+
+        applyCssVariables();
+        setDocumentHints();
+        enableDocumentTransition();
+
+        if (!debugDisableSharedElements) {
+          applySharedElementNamesTo(currentScope, null);
+        }
+        const currentPair = context && activeClickPairing && !debugDisableSharedElements
+          ? applyActiveClickPairNames(currentScope, context, 'current')
           : { featured: 0, title: 0 };
-        const currentDuplicates = findDuplicateTransitionNames(document);
+        const currentDuplicates = debugDisableSharedElements ? [] : findDuplicateTransitionNames(currentScope);
         if (currentDuplicates.length) {
           log('duplicate transition names', currentDuplicates);
         }
 
-        const nextShellClone = nextShell.element.cloneNode(true);
-        clearAceViewTransitionNames(nextShellClone);
-        applySharedElementNamesTo(nextShellClone, null);
-        const incomingPair = context && activeClickPairing
-          ? applyActiveClickPairNames(nextShellClone, context, 'incoming')
+        if (!debugDisableSharedElements) {
+          applySharedElementNamesTo(incomingScope, null);
+        }
+        const incomingPair = context && activeClickPairing && !debugDisableSharedElements
+          ? applyActiveClickPairNames(incomingScope, context, 'incoming')
           : { featured: 0, title: 0 };
-        const incomingDuplicates = findDuplicateTransitionNames(nextShellClone);
+        const incomingDuplicates = debugDisableSharedElements ? [] : findDuplicateTransitionNames(incomingScope);
         if (incomingDuplicates.length) {
           log('duplicate transition names', incomingDuplicates);
         }
 
-        const activeCounts = validateActiveClickPairs(document, nextShellClone, context, currentPair, incomingPair);
-        const incomingShell = nextShellClone;
-        const shellName = nextShell.selector;
+        const activeCounts = validateActiveClickPairs(currentScope, incomingScope, context, currentPair, incomingPair);
+        const incomingShell = incomingScope;
         const currentActiveCount = activeCounts.current;
         const incomingActiveCount = activeCounts.incoming;
-        const hasSharedTransition = currentActiveCount.featured > 0 || currentActiveCount.title > 0 || incomingActiveCount.featured > 0 || incomingActiveCount.title > 0;
+        const currentNamedCount = debugDisableSharedElements ? 0 : countNamedElements(currentScope);
+        const incomingNamedCount = debugDisableSharedElements ? 0 : countNamedElements(incomingScope);
+        const hasSharedTransition = currentNamedCount > 0 || incomingNamedCount > 0;
 
         document.documentElement.classList.toggle('ace-has-active-shared-transition', hasSharedTransition);
 
-        log('navigation mode', context && activeClickPairing ? 'click-active' : 'generic', url.href);
+        log('navigation mode', context && activeClickPairing ? 'click-active' : 'generic', source, url.href);
+        log('transition scopes', {
+          currentScopeTag: currentScope.tagName,
+          currentScopeClass: currentScope.className,
+          incomingScopeTag: incomingScope.tagName,
+          incomingScopeClass: incomingScope.className,
+          shellSelector: shellName,
+          currentNamedCount,
+          incomingNamedCount,
+        });
         log('shared transition summary', {
           shellSelector: shellName,
           currentGenericDuplicates: currentDuplicates,
@@ -847,11 +887,12 @@
           incoming: incomingActiveCount,
         });
 
-        const update = () => swapDocument(incomingShell, nextDoc, shellName);
+        const update = () => swapDocument(currentScope, incomingShell, nextDoc, shellName);
 
         if (supportsViewTransitions) {
           return document.startViewTransition(update).finished.then(() => {
-            reinitializeFromDocument(document);
+            const shell = getShellElement(document);
+            reinitializeFromDocument(shell.element || document);
             document.documentElement.classList.remove('ace-has-active-shared-transition');
             return {
               url: url.href,
@@ -866,7 +907,8 @@
         document.documentElement.classList.add('ace-view-transition-fade');
         update();
         document.documentElement.classList.remove('ace-view-transition-fade');
-        reinitializeFromDocument(document);
+        const shell = getShellElement(document);
+        reinitializeFromDocument(shell.element || document);
         document.documentElement.classList.remove('ace-has-active-shared-transition');
 
         return Promise.resolve({
@@ -922,6 +964,7 @@
     const clickedUrl = new URL(anchor.getAttribute('href'), window.location.href);
     const clickedContext = activeClickPairing ? buildClickContext(anchor) : null;
     loadPage(clickedUrl, {
+      source: 'click',
       replaceHistory: false,
       clickedContext,
       historyState: {
@@ -938,6 +981,7 @@
     const url = new URL(window.location.href);
     log('popstate', url.href);
     loadPage(url, {
+      source: 'popstate',
       replaceHistory: true,
       clickedContext: null,
       historyState: event && event.state ? event.state : null,

@@ -357,17 +357,18 @@
 
   function getShellElement(doc) {
     for (let i = 0; i < shellSelectors.length; i += 1) {
+      const selector = shellSelectors[i];
       try {
-        const match = doc.querySelector(shellSelectors[i]);
+        const match = doc.querySelector(selector);
         if (match) {
-          return match;
+          return { element: match, selector };
         }
       } catch (error) {
         // ignore invalid selectors and keep searching
       }
     }
 
-    return doc.body || doc.documentElement;
+    return { element: doc.body || doc.documentElement, selector: 'body' };
   }
 
   function buildClickContext(anchor) {
@@ -403,7 +404,7 @@
   }
 
   function swapDocument(nextDoc, context) {
-    const shell = getShellElement(nextDoc);
+    const nextShell = getShellElement(nextDoc);
     const currentShell = getShellElement(document);
     const nextBody = nextDoc.body ? nextDoc.body.cloneNode(true) : null;
 
@@ -411,24 +412,24 @@
       document.title = nextDoc.title;
     }
 
-    if (shell && shell !== nextDoc.body && shell !== nextDoc.documentElement) {
-      const incomingShell = shell.cloneNode(true);
+    if (nextShell.element && nextShell.selector !== 'body' && currentShell.element && currentShell.selector === nextShell.selector) {
+      const incomingShell = nextShell.element.cloneNode(true);
       applySharedElementNamesTo(incomingShell, context);
-
-      if (currentShell && currentShell !== document.body && currentShell !== document.documentElement) {
-        currentShell.replaceWith(incomingShell);
-      } else if (nextBody) {
-        document.body.replaceWith(nextBody);
-      } else {
-        document.body.innerHTML = incomingShell.innerHTML;
+      currentShell.element.replaceWith(incomingShell);
+      log('swapped shell', nextShell.selector);
+    } else if (nextShell.element && nextShell.selector !== 'body') {
+      const incomingShell = nextShell.element.cloneNode(true);
+      applySharedElementNamesTo(incomingShell, context);
+      if (nextBody && document.body) {
+        document.body.innerHTML = nextBody.innerHTML;
       }
-      log('swapped shell', shell.tagName ? shell.tagName.toLowerCase() : 'shell');
+      log('swapped content shell only', nextShell.selector);
     } else if (nextBody) {
       document.body.replaceWith(nextBody);
       log('swapped body', 'body');
-    } else if (shell && shell !== nextDoc.documentElement) {
-      document.body.innerHTML = shell.innerHTML;
-      log('swapped shell', 'innerHTML fallback');
+    } else if (nextShell.element && nextShell.selector === 'body') {
+      document.body.innerHTML = nextShell.element.innerHTML;
+      log('swapped shell', 'body-fallback');
     }
 
     // Inline scripts are not re-executed here. This is the first stable pass
@@ -458,9 +459,7 @@
         const nextDoc = new DOMParser().parseFromString(html, 'text/html');
         applySharedElementNamesTo(document, context);
         applySharedElementNamesTo(nextDoc, context);
-        if (supportsViewTransitions) {
-        document.documentElement.classList.add('ace-has-active-shared-transition');
-      }
+        document.documentElement.classList.toggle('ace-has-active-shared-transition', true);
         const update = () => swapDocument(nextDoc, context);
 
         if (supportsViewTransitions) {

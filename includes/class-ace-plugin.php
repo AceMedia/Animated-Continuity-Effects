@@ -11,6 +11,9 @@ class ACE_Plugin {
     /** @var string */
     private $hook_suffix = '';
 
+    /** @var array<string, bool> */
+    private $server_rendered_transition_names = array();
+
     /**
      * Get the singleton instance.
      *
@@ -265,6 +268,25 @@ class ACE_Plugin {
     }
 
     /**
+     * Reserve a server-rendered transition name for this response.
+     *
+     * Native view transitions require names to be unique per document. If the
+     * same block is rendered in multiple places, only the first instance wins.
+     *
+     * @param string $name Transition name.
+     * @return bool
+     */
+    private function reserve_server_transition_name($name) {
+        $name = sanitize_html_class($name);
+        if ('' === $name || isset($this->server_rendered_transition_names[$name])) {
+            return false;
+        }
+
+        $this->server_rendered_transition_names[$name] = true;
+        return true;
+    }
+
+    /**
      * Append a view-transition-name style to the first matching HTML tag.
      *
      * @param string $html HTML.
@@ -285,6 +307,10 @@ class ACE_Plugin {
         if (class_exists('WP_HTML_Tag_Processor')) {
             $processor = new WP_HTML_Tag_Processor($html);
             if ($processor->next_tag(array('tag_name' => strtoupper($tag)))) {
+                if (!$this->reserve_server_transition_name($name)) {
+                    return $html;
+                }
+
                 $style = (string) $processor->get_attribute('style');
                 $style = rtrim(trim($style), ';');
                 $style = '' === $style ? 'view-transition-name: ' . $name . ';' : $style . '; view-transition-name: ' . $name . ';';
@@ -296,6 +322,10 @@ class ACE_Plugin {
         return preg_replace_callback(
             '/<' . preg_quote($tag, '/') . '\b([^>]*)>/i',
             function ($matches) use ($tag, $name) {
+                if (!$this->reserve_server_transition_name($name)) {
+                    return $matches[0];
+                }
+
                 $attributes = $matches[1];
                 if (preg_match('/\sstyle=(["\'])(.*?)\1/i', $attributes, $style_match)) {
                     $new_style = rtrim(trim($style_match[2]), ';') . '; view-transition-name: ' . $name . ';';
@@ -359,13 +389,18 @@ class ACE_Plugin {
                     return $matches[0];
                 }
 
+                $transition_name = 'ace-entry-title-' . (int) $post_id;
+                if (!$this->reserve_server_transition_name($transition_name)) {
+                    return $matches[0];
+                }
+
                 if (preg_match('/\sstyle=(["\'])(.*?)\1/i', $attributes, $style_match)) {
-                    $new_style = rtrim(trim($style_match[2]), ';') . '; view-transition-name: ace-entry-title-' . (int) $post_id . ';';
+                    $new_style = rtrim(trim($style_match[2]), ';') . '; view-transition-name: ' . $transition_name . ';';
                     $attributes = str_replace($style_match[0], ' style=' . $style_match[1] . esc_attr($new_style) . $style_match[1], $attributes);
                     return '<a' . $attributes . '>';
                 }
 
-                return '<a' . $attributes . ' style="' . esc_attr('view-transition-name: ace-entry-title-' . (int) $post_id . ';') . '">';
+                return '<a' . $attributes . ' style="' . esc_attr('view-transition-name: ' . $transition_name . ';') . '">';
             },
             $html
         );
@@ -442,14 +477,18 @@ class ACE_Plugin {
             wp_cache_flush();
         }
 
-        if (function_exists('ace_redis_cache')) {
-            $redis_cache = ace_redis_cache();
-            if ($redis_cache && method_exists($redis_cache, 'get_cache_manager')) {
-                $cache_manager = $redis_cache->get_cache_manager();
-                if ($cache_manager && method_exists($cache_manager, 'clear_all_cache')) {
-                    $cache_manager->clear_all_cache();
+        try {
+            if (function_exists('ace_redis_cache')) {
+                $redis_cache = ace_redis_cache();
+                if ($redis_cache && method_exists($redis_cache, 'get_cache_manager')) {
+                    $cache_manager = $redis_cache->get_cache_manager();
+                    if ($cache_manager && method_exists($cache_manager, 'clear_all_cache')) {
+                        $cache_manager->clear_all_cache();
+                    }
                 }
             }
+        } catch (Throwable $exception) {
+            error_log('ACE: Failed to clear Ace Redis cache after settings update: ' . $exception->getMessage());
         }
     }
 

@@ -1,11 +1,3 @@
-@view-transition {
-  navigation: auto;
-}
-
-html {
-  view-transition-name: root;
-}
-
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-group(*),
   ::view-transition-image-pair(*),

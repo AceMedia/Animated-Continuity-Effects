@@ -77,6 +77,17 @@
     });
   }
 
+  function enableDocumentTransition() {
+    if (!supportsViewTransitions) {
+      return;
+    }
+
+    document.documentElement.style.viewTransitionName = 'root';
+    if (document.documentElement.style) {
+      document.documentElement.style.setProperty('view-transition-navigation', 'auto');
+    }
+  }
+
   function shouldSkipTransition(activationElement) {
     return hasExcludedMatch(document) || hasExcludedMatch(activationElement || document);
   }
@@ -108,12 +119,12 @@
   function init() {
     applyCssVariables();
     setDocumentHints();
-    applySharedElementNames();
-
     if (!supportsViewTransitions) {
       return;
     }
 
+    enableDocumentTransition();
+    applySharedElementNames();
     setupNavigationGuards();
   }
 

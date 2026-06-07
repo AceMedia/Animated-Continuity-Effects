@@ -6,6 +6,41 @@ html.ace-view-transitions-enabled {
   view-transition-name: root;
 }
 
+html.ace-view-transition-style-fade {
+  --ace-view-transition-old-animation: ace-root-out-fade;
+  --ace-view-transition-new-animation: ace-root-in-fade;
+}
+
+html.ace-view-transition-style-slide_up {
+  --ace-view-transition-old-animation: ace-root-out-slide_up;
+  --ace-view-transition-new-animation: ace-root-in-slide_up;
+}
+
+html.ace-view-transition-style-slide_right {
+  --ace-view-transition-old-animation: ace-root-out-slide_right;
+  --ace-view-transition-new-animation: ace-root-in-slide_right;
+}
+
+html.ace-view-transition-style-slide_left {
+  --ace-view-transition-old-animation: ace-root-out-slide_left;
+  --ace-view-transition-new-animation: ace-root-in-slide_left;
+}
+
+html.ace-view-transition-style-zoom {
+  --ace-view-transition-old-animation: ace-root-out-zoom;
+  --ace-view-transition-new-animation: ace-root-in-zoom;
+}
+
+html.ace-view-transition-style-flip_3d {
+  --ace-view-transition-old-animation: ace-root-out-flip_3d;
+  --ace-view-transition-new-animation: ace-root-in-flip_3d;
+}
+
+html.ace-view-transition-style-rotate {
+  --ace-view-transition-old-animation: ace-root-out-rotate;
+  --ace-view-transition-new-animation: ace-root-in-rotate;
+}
+
 ::view-transition {
   background: transparent;
 }
@@ -15,99 +50,15 @@ html.ace-view-transitions-enabled {
   animation-timing-function: var(--ace-view-transition-timing-function, cubic-bezier(0.2, 0, 0, 1));
 }
 
-html.ace-view-transition-style-fade::view-transition-old(root) {
-  animation-name: ace-root-out-fade;
+::view-transition-old(root) {
+  animation-name: var(--ace-view-transition-old-animation, ace-root-out-fade);
   animation-duration: var(--ace-view-transition-duration, 350ms);
   animation-timing-function: var(--ace-view-transition-timing-function, cubic-bezier(0.2, 0, 0, 1));
   animation-fill-mode: both;
 }
 
-html.ace-view-transition-style-fade::view-transition-new(root) {
-  animation-name: ace-root-in-fade;
-  animation-duration: var(--ace-view-transition-duration, 350ms);
-  animation-timing-function: var(--ace-view-transition-timing-function, cubic-bezier(0.2, 0, 0, 1));
-  animation-fill-mode: both;
-}
-
-html.ace-view-transition-style-slide_up::view-transition-old(root) {
-  animation-name: ace-root-out-slide_up;
-  animation-duration: var(--ace-view-transition-duration, 350ms);
-  animation-timing-function: var(--ace-view-transition-timing-function, cubic-bezier(0.2, 0, 0, 1));
-  animation-fill-mode: both;
-}
-
-html.ace-view-transition-style-slide_up::view-transition-new(root) {
-  animation-name: ace-root-in-slide_up;
-  animation-duration: var(--ace-view-transition-duration, 350ms);
-  animation-timing-function: var(--ace-view-transition-timing-function, cubic-bezier(0.2, 0, 0, 1));
-  animation-fill-mode: both;
-}
-
-html.ace-view-transition-style-slide_right::view-transition-old(root) {
-  animation-name: ace-root-out-slide_right;
-  animation-duration: var(--ace-view-transition-duration, 350ms);
-  animation-timing-function: var(--ace-view-transition-timing-function, cubic-bezier(0.2, 0, 0, 1));
-  animation-fill-mode: both;
-}
-
-html.ace-view-transition-style-slide_right::view-transition-new(root) {
-  animation-name: ace-root-in-slide_right;
-  animation-duration: var(--ace-view-transition-duration, 350ms);
-  animation-timing-function: var(--ace-view-transition-timing-function, cubic-bezier(0.2, 0, 0, 1));
-  animation-fill-mode: both;
-}
-
-html.ace-view-transition-style-slide_left::view-transition-old(root) {
-  animation-name: ace-root-out-slide_left;
-  animation-duration: var(--ace-view-transition-duration, 350ms);
-  animation-timing-function: var(--ace-view-transition-timing-function, cubic-bezier(0.2, 0, 0, 1));
-  animation-fill-mode: both;
-}
-
-html.ace-view-transition-style-slide_left::view-transition-new(root) {
-  animation-name: ace-root-in-slide_left;
-  animation-duration: var(--ace-view-transition-duration, 350ms);
-  animation-timing-function: var(--ace-view-transition-timing-function, cubic-bezier(0.2, 0, 0, 1));
-  animation-fill-mode: both;
-}
-
-html.ace-view-transition-style-zoom::view-transition-old(root) {
-  animation-name: ace-root-out-zoom;
-  animation-duration: var(--ace-view-transition-duration, 350ms);
-  animation-timing-function: var(--ace-view-transition-timing-function, cubic-bezier(0.2, 0, 0, 1));
-  animation-fill-mode: both;
-}
-
-html.ace-view-transition-style-zoom::view-transition-new(root) {
-  animation-name: ace-root-in-zoom;
-  animation-duration: var(--ace-view-transition-duration, 350ms);
-  animation-timing-function: var(--ace-view-transition-timing-function, cubic-bezier(0.2, 0, 0, 1));
-  animation-fill-mode: both;
-}
-
-html.ace-view-transition-style-flip_3d::view-transition-old(root) {
-  animation-name: ace-root-out-flip_3d;
-  animation-duration: var(--ace-view-transition-duration, 350ms);
-  animation-timing-function: var(--ace-view-transition-timing-function, cubic-bezier(0.2, 0, 0, 1));
-  animation-fill-mode: both;
-}
-
-html.ace-view-transition-style-flip_3d::view-transition-new(root) {
-  animation-name: ace-root-in-flip_3d;
-  animation-duration: var(--ace-view-transition-duration, 350ms);
-  animation-timing-function: var(--ace-view-transition-timing-function, cubic-bezier(0.2, 0, 0, 1));
-  animation-fill-mode: both;
-}
-
-html.ace-view-transition-style-rotate::view-transition-old(root) {
-  animation-name: ace-root-out-rotate;
-  animation-duration: var(--ace-view-transition-duration, 350ms);
-  animation-timing-function: var(--ace-view-transition-timing-function, cubic-bezier(0.2, 0, 0, 1));
-  animation-fill-mode: both;
-}
-
-html.ace-view-transition-style-rotate::view-transition-new(root) {
-  animation-name: ace-root-in-rotate;
+::view-transition-new(root) {
+  animation-name: var(--ace-view-transition-new-animation, ace-root-in-fade);
   animation-duration: var(--ace-view-transition-duration, 350ms);
   animation-timing-function: var(--ace-view-transition-timing-function, cubic-bezier(0.2, 0, 0, 1));
   animation-fill-mode: both;

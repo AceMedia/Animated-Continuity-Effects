@@ -71,6 +71,7 @@ class ACE_Plugin {
             'timing_function' => 'cubic-bezier(0.2, 0, 0, 1)',
             'delay' => '0ms',
             'transition_mode' => 'cross-document',
+            'intercept_internal_links' => '0',
             'root_transition' => '1',
             'respect_reduced_motion' => '1',
             'shared_elements' => array(
@@ -552,6 +553,15 @@ class ACE_Plugin {
         );
 
         add_settings_field(
+            'intercept_internal_links',
+            __('Intercept internal links', 'animated-continuity-effects'),
+            array($this, 'render_toggle_field'),
+            'animated-continuity-effects',
+            'ace_main_section',
+            array('key' => 'intercept_internal_links', 'label' => __('Allow the experimental same-document router to intercept normal internal links', 'animated-continuity-effects'))
+        );
+
+        add_settings_field(
             'animation_style',
             __('Animation style', 'animated-continuity-effects'),
             array($this, 'render_animation_style_field'),
@@ -661,6 +671,7 @@ class ACE_Plugin {
 
         $output['transition_mode'] = isset($input['transition_mode']) ? sanitize_key(wp_unslash($input['transition_mode'])) : 'cross-document';
         $output['transition_mode'] = in_array($output['transition_mode'], array('cross-document', 'same-document'), true) ? $output['transition_mode'] : 'cross-document';
+        $output['intercept_internal_links'] = isset($input['intercept_internal_links']) && '1' === (string) wp_unslash($input['intercept_internal_links']) ? '1' : '0';
 
         $output['root_transition'] = isset($input['root_transition']) && '1' === (string) wp_unslash($input['root_transition']) ? '1' : '0';
         $output['respect_reduced_motion'] = isset($input['respect_reduced_motion']) && '1' === (string) wp_unslash($input['respect_reduced_motion']) ? '1' : '0';
@@ -765,7 +776,8 @@ class ACE_Plugin {
 
         $settings = $this->get_settings();
         $config = $this->build_frontend_config($settings);
-        echo "\n<!-- ACE transitionMode: " . esc_html($config['transitionMode']) . " -->\n";
+        $router = !empty($config['sameDocumentRouterEnabled']) ? 'same-document' : 'native';
+        echo "\n<!-- ACE transition mode: " . esc_html($config['transitionMode']) . '; router: ' . esc_html($router) . " -->\n";
     }
 
     /**
@@ -818,6 +830,9 @@ class ACE_Plugin {
             'animationStyle' => isset($settings['animation_style']) && isset(self::animation_styles()[$settings['animation_style']]) ? $settings['animation_style'] : 'fade',
             'activeClickPairing' => false,
             'debugDisableSharedElements' => false,
+            'interceptInternalLinks' => '1' === (string) $settings['intercept_internal_links'],
+            'sameDocumentRouterEnabled' => 'same-document' === $settings['transition_mode'] && '1' === (string) $settings['intercept_internal_links'],
+            'debug' => current_user_can('manage_options'),
         );
     }
 
@@ -878,7 +893,9 @@ class ACE_Plugin {
         <div class="wrap ace-settings">
             <h1><?php echo esc_html__('Animated Continuity Effects', 'animated-continuity-effects'); ?></h1>
             <p><?php echo esc_html__('Control the view transition motion, exclusions, and shared element rules used on the frontend.', 'animated-continuity-effects'); ?></p>
-            <p><strong><?php echo esc_html__('Current saved transition mode:', 'animated-continuity-effects'); ?></strong> <?php echo esc_html($settings['transition_mode']); ?></p>
+            <div class="notice notice-info inline">
+                <p><strong><?php echo esc_html__('Current saved transition mode:', 'animated-continuity-effects'); ?></strong> <?php echo esc_html($settings['transition_mode']); ?></p>
+            </div>
             <p class="description"><?php echo esc_html__('Changing defaults in code does not change existing saved settings. Save this page to update the live mode.', 'animated-continuity-effects'); ?></p>
             <form action="options.php" method="post">
                 <?php
@@ -915,10 +932,11 @@ class ACE_Plugin {
         $settings = $this->get_settings();
         ?>
         <select name="<?php echo esc_attr(ACE_OPTION_NAME . '[transition_mode]'); ?>">
-            <option value="cross-document" <?php selected($settings['transition_mode'], 'cross-document'); ?>><?php echo esc_html__('Cross-document', 'animated-continuity-effects'); ?></option>
-            <option value="same-document" <?php selected($settings['transition_mode'], 'same-document'); ?>><?php echo esc_html__('Same-document', 'animated-continuity-effects'); ?></option>
+            <option value="cross-document" <?php selected($settings['transition_mode'], 'cross-document'); ?>><?php echo esc_html__('Native browser navigation, recommended', 'animated-continuity-effects'); ?></option>
+            <option value="same-document" <?php selected($settings['transition_mode'], 'same-document'); ?>><?php echo esc_html__('AJAX shell swap, experimental', 'animated-continuity-effects'); ?></option>
         </select>
-        <p class="description"><?php echo esc_html__('Cross-document is the browser navigation path; same-document is useful for intra-page UI transitions if you later add them.', 'animated-continuity-effects'); ?></p>
+        <p class="description"><?php echo esc_html__('Cross-document uses the browser navigation path and is the recommended mode for Chrome native View Transitions.', 'animated-continuity-effects'); ?></p>
+        <p class="description"><?php echo esc_html__('Same-document mode replaces part of the page using fetch() and may not match native browser history animations on complex WordPress themes.', 'animated-continuity-effects'); ?></p>
         <?php
     }
 

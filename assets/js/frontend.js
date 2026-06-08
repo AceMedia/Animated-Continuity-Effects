@@ -12,6 +12,8 @@
   const isSameDocumentMode = transitionMode === 'same-document';
   const isCrossDocumentMode = transitionMode === 'cross-document';
   const animationStyle = typeof config.animationStyle === 'string' && config.animationStyle ? config.animationStyle : 'fade';
+  const interceptInternalLinks = config.interceptInternalLinks === true;
+  const sameDocumentRouterEnabled = config.sameDocumentRouterEnabled === true || (isSameDocumentMode && interceptInternalLinks);
   const activeClickPairing = config.activeClickPairing === true;
   const debugEnabled = config.debug === true;
   const debugDisableSharedElements = config.debugDisableSharedElements === true;
@@ -933,7 +935,7 @@
   }
 
   function onClick(event) {
-    if (!isSameDocumentMode) {
+    if (!sameDocumentRouterEnabled) {
       log('skip click interception: transition mode is', transitionMode);
       return;
     }
@@ -974,7 +976,7 @@
   }
 
   function onPopState(event) {
-    if (!isSameDocumentMode) {
+    if (!sameDocumentRouterEnabled) {
       return;
     }
 
@@ -992,7 +994,7 @@
     applyCssVariables();
     setDocumentHints();
     document.documentElement.setAttribute('data-ace-transition-mode', transitionMode);
-    document.documentElement.setAttribute('data-ace-router', isSameDocumentMode ? 'same-document' : 'native');
+    document.documentElement.setAttribute('data-ace-router', sameDocumentRouterEnabled ? 'same-document' : 'native');
     log('transition mode', transitionMode);
 
     if (supportsViewTransitions) {
@@ -1001,7 +1003,10 @@
       setupNavigationGuards();
     }
 
-    if (isSameDocumentMode) {
+    if (sameDocumentRouterEnabled) {
+      if (debugEnabled && window.console && typeof window.console.warn === 'function') {
+        window.console.warn('[ACE] Same-document router is active. Clicks are intercepted and may not match native cross-document/history transitions.');
+      }
       document.addEventListener('click', onClick, true);
       window.addEventListener('popstate', onPopState);
       log('same-document router enabled');
@@ -1017,6 +1022,11 @@
 
     if (isCrossDocumentMode) {
       log('native navigation enabled');
+      return;
+    }
+
+    if (isSameDocumentMode) {
+      log('same-document mode selected, internal link interception disabled');
       return;
     }
 

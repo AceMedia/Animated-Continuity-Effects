@@ -4,6 +4,7 @@
   const config = window.ACE_VIEW_TRANSITIONS || {};
   const cssVars = config.cssVars || {};
   const excludeList = normalizeSelectorList(config.excludeList);
+  const skipTransitionList = normalizeSelectorList(config.skipTransitionList || config.skipTransitionSelectors);
   const sameElementRules = Array.isArray(config.sameElementRules) ? config.sameElementRules : [];
   const nameScope = typeof config.nameScope === 'string' && config.nameScope ? config.nameScope : 'post';
   const enableRootTransition = config.enableRootTransition !== false;
@@ -21,8 +22,20 @@
   const shellSelectors = Array.isArray(config.shellSelectors) && config.shellSelectors.length
     ? config.shellSelectors
     : ['main', '.wp-site-blocks > main', '#primary', '#content', '.site-main'];
+  const persistentSelectors = normalizeSelectorList(config.persistentSelectors || [
+    'header',
+    '.site-header',
+    '.wp-site-blocks > header',
+    'nav',
+    '.wp-block-navigation',
+    'footer',
+    '.site-footer',
+    '.wp-site-blocks > footer',
+  ]);
   let navigationGuardsSetup = false;
   const invalidExclusionSelectors = new Set();
+  const invalidPersistentSelectors = new Set();
+  const invalidSkipTransitionSelectors = new Set();
 
   const supportsViewTransitions = 'startViewTransition' in document;
 
@@ -86,18 +99,18 @@
       .slice(0, 40);
   }
 
-  function hasExcludedMatch(root) {
-    if (!root || !excludeList.length) {
+  function hasSkipTransitionMatch(root) {
+    if (!root || !skipTransitionList.length) {
       return false;
     }
 
-    return excludeList.some((selector) => {
+    return skipTransitionList.some((selector) => {
       try {
         return !!root.querySelector(selector);
       } catch (error) {
-        if (!invalidExclusionSelectors.has(selector)) {
-          invalidExclusionSelectors.add(selector);
-          log('invalid exclusion selector', selector, error);
+        if (!invalidSkipTransitionSelectors.has(selector)) {
+          invalidSkipTransitionSelectors.add(selector);
+          log('invalid skip-transition selector', selector, error);
         }
         return false;
       }
@@ -128,6 +141,46 @@
 
   function isExcludedElement(element) {
     return !!getExclusionSelectorForElement(element);
+  }
+
+  function getPersistentSelectorForElement(element) {
+    if (!element || !element.matches || !persistentSelectors.length) {
+      return '';
+    }
+
+    for (let i = 0; i < persistentSelectors.length; i += 1) {
+      const selector = persistentSelectors[i];
+      try {
+        if (element.matches(selector) || !!element.closest(selector)) {
+          return selector;
+        }
+      } catch (error) {
+        if (!invalidPersistentSelectors.has(selector)) {
+          invalidPersistentSelectors.add(selector);
+          log('invalid persistent selector', selector, error);
+        }
+      }
+    }
+
+    return '';
+  }
+
+  function isPersistentElement(element) {
+    return !!getPersistentSelectorForElement(element);
+  }
+
+  function clearElementAceTransitionName(element) {
+    if (!element || !element.style) {
+      return;
+    }
+
+    if (element.style.viewTransitionName && element.style.viewTransitionName.indexOf('ace-') === 0) {
+      element.style.viewTransitionName = '';
+    }
+
+    if ('viewTransitionClass' in element.style) {
+      element.style.viewTransitionClass = '';
+    }
   }
 
   function scopeToken(rule, index) {
@@ -424,7 +477,14 @@
       elements.forEach((element, elementIndex) => {
         const exclusionSelector = getExclusionSelectorForElement(element);
         if (exclusionSelector) {
+          clearElementAceTransitionName(element);
           log('shared element skipped by exclusion', exclusionSelector, element);
+          return;
+        }
+
+        if (sameDocumentRouterEnabled && isPersistentElement(element)) {
+          clearElementAceTransitionName(element);
+          log('shared element skipped because persistent in same-document mode', element);
           return;
         }
 
@@ -664,6 +724,11 @@
       return false;
     }
 
+    if (sameDocumentRouterEnabled && isPersistentElement(element)) {
+      log('active transition skipped because persistent in same-document mode', name, element);
+      return false;
+    }
+
     if (element.setAttribute && !element.hasAttribute('data-ace-original-view-transition-name')) {
       element.setAttribute('data-ace-original-view-transition-name', element.style.viewTransitionName || '');
     }
@@ -738,7 +803,8 @@
         return;
       }
 
-      if (hasExcludedMatch(document)) {
+      if (hasSkipTransitionMatch(document)) {
+        log('pageswap skipped by skip-transition selector');
         event.viewTransition.skipTransition();
       }
     });
@@ -980,6 +1046,27 @@
     return matches;
   }
 
+  function getPersistentMatches(rootOrDocument) {
+    const root = rootOrDocument && rootOrDocument.querySelectorAll ? rootOrDocument : document;
+    const matches = [];
+
+    if (!persistentSelectors.length) {
+      return matches;
+    }
+
+    root.querySelectorAll('*').forEach((element) => {
+      const selector = getPersistentSelectorForElement(element);
+      if (selector) {
+        matches.push({
+          element,
+          selector,
+        });
+      }
+    });
+
+    return matches;
+  }
+
   function exposeDebugUtility() {
     if (!debugEnabled) {
       return;
@@ -990,6 +1077,7 @@
       elementsWithTransitionName,
       getNamedElements,
       getExcludedMatches,
+      getPersistentMatches,
     };
   }
 
@@ -1067,6 +1155,10 @@
         incomingActiveCount.featured = Math.max(incomingActiveCount.featured, activeFeaturedPair.incoming);
         const currentNamedCount = debugDisableSharedElements ? 0 : countNamedElements(currentScope);
         const incomingNamedCount = debugDisableSharedElements ? 0 : countNamedElements(incomingScope);
+        const currentExcludedCount = getExcludedMatches(currentScope).length;
+        const incomingExcludedCount = getExcludedMatches(incomingScope).length;
+        const currentPersistentCount = getPersistentMatches(currentScope).length;
+        const incomingPersistentCount = getPersistentMatches(incomingScope).length;
         const hasSharedTransition = currentNamedCount > 0 || incomingNamedCount > 0;
 
         document.documentElement.classList.toggle('ace-has-active-shared-transition', hasSharedTransition);
@@ -1080,6 +1172,10 @@
           shellSelector: shellName,
           currentNamedCount,
           incomingNamedCount,
+          currentExcludedCount,
+          incomingExcludedCount,
+          currentPersistentCount,
+          incomingPersistentCount,
         });
         log('shared transition summary', {
           shellSelector: shellName,
@@ -1198,6 +1294,8 @@
     document.documentElement.setAttribute('data-ace-router', sameDocumentRouterEnabled ? 'same-document' : 'native');
     log('transition mode', transitionMode);
     log('exclusion selector count', excludeList.length);
+    log('skip-transition selector count', skipTransitionList.length);
+    log('persistent selector count', persistentSelectors.length);
     exposeDebugUtility();
 
     if (supportsViewTransitions) {

@@ -833,6 +833,17 @@ class ACE_Plugin {
             'debugDisableSharedElements' => false,
             'interceptInternalLinks' => '1' === (string) $settings['intercept_internal_links'],
             'sameDocumentRouterEnabled' => 'same-document' === $settings['transition_mode'] && '1' === (string) $settings['intercept_internal_links'],
+            'persistentSelectors' => array(
+                'header',
+                '.site-header',
+                '.wp-site-blocks > header',
+                'nav',
+                '.wp-block-navigation',
+                'footer',
+                '.site-footer',
+                '.wp-site-blocks > footer',
+            ),
+            'skipTransitionSelectors' => array(),
             'debug' => current_user_can('manage_options'),
         );
     }

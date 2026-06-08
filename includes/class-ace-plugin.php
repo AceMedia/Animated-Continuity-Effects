@@ -829,6 +829,7 @@ class ACE_Plugin {
             'transitionMode' => $settings['transition_mode'],
             'animationStyle' => isset($settings['animation_style']) && isset(self::animation_styles()[$settings['animation_style']]) ? $settings['animation_style'] : 'fade',
             'activeClickPairing' => false,
+            'activeFeaturedImagePairing' => true,
             'debugDisableSharedElements' => false,
             'interceptInternalLinks' => '1' === (string) $settings['intercept_internal_links'],
             'sameDocumentRouterEnabled' => 'same-document' === $settings['transition_mode'] && '1' === (string) $settings['intercept_internal_links'],

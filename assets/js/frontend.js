@@ -3,7 +3,7 @@
 
   const config = window.ACE_VIEW_TRANSITIONS || {};
   const cssVars = config.cssVars || {};
-  const excludeList = Array.isArray(config.excludeList) ? config.excludeList : [];
+  const excludeList = normalizeSelectorList(config.excludeList);
   const sameElementRules = Array.isArray(config.sameElementRules) ? config.sameElementRules : [];
   const nameScope = typeof config.nameScope === 'string' && config.nameScope ? config.nameScope : 'post';
   const enableRootTransition = config.enableRootTransition !== false;
@@ -15,12 +15,14 @@
   const interceptInternalLinks = config.interceptInternalLinks === true;
   const sameDocumentRouterEnabled = config.sameDocumentRouterEnabled === true || (isSameDocumentMode && interceptInternalLinks);
   const activeClickPairing = config.activeClickPairing === true;
+  const activeFeaturedImagePairing = config.activeFeaturedImagePairing !== false;
   const debugEnabled = config.debug === true;
   const debugDisableSharedElements = config.debugDisableSharedElements === true;
   const shellSelectors = Array.isArray(config.shellSelectors) && config.shellSelectors.length
     ? config.shellSelectors
     : ['main', '.wp-site-blocks > main', '#primary', '#content', '.site-main'];
   let navigationGuardsSetup = false;
+  const invalidExclusionSelectors = new Set();
 
   const supportsViewTransitions = 'startViewTransition' in document;
 
@@ -32,6 +34,17 @@
     const args = Array.prototype.slice.call(arguments);
     args.unshift('[ACE]');
     window.console.debug.apply(window.console, args);
+  }
+
+  function normalizeSelectorList(value) {
+    if (Array.isArray(value)) {
+      return value.map(String).map((item) => item.trim()).filter(Boolean);
+    }
+
+    return String(value || '')
+      .split(/[\n,]+/)
+      .map((item) => item.trim())
+      .filter(Boolean);
   }
 
   function isReducedMotion() {
@@ -82,9 +95,39 @@
       try {
         return !!root.querySelector(selector);
       } catch (error) {
+        if (!invalidExclusionSelectors.has(selector)) {
+          invalidExclusionSelectors.add(selector);
+          log('invalid exclusion selector', selector, error);
+        }
         return false;
       }
     });
+  }
+
+  function getExclusionSelectorForElement(element) {
+    if (!element || !element.matches || !excludeList.length) {
+      return '';
+    }
+
+    for (let i = 0; i < excludeList.length; i += 1) {
+      const selector = excludeList[i];
+      try {
+        if (element.matches(selector) || !!element.closest(selector)) {
+          return selector;
+        }
+      } catch (error) {
+        if (!invalidExclusionSelectors.has(selector)) {
+          invalidExclusionSelectors.add(selector);
+          log('invalid exclusion selector', selector, error);
+        }
+      }
+    }
+
+    return '';
+  }
+
+  function isExcludedElement(element) {
+    return !!getExclusionSelectorForElement(element);
   }
 
   function scopeToken(rule, index) {
@@ -251,6 +294,34 @@
     return count;
   }
 
+  function elementsWithTransitionName(rootOrDocument, name) {
+    const root = rootOrDocument && rootOrDocument.querySelectorAll ? rootOrDocument : document;
+    const matches = [];
+
+    if (!name) {
+      return matches;
+    }
+
+    root.querySelectorAll('*').forEach((element) => {
+      if (element.style && element.style.viewTransitionName === name) {
+        matches.push(element);
+      }
+    });
+
+    return matches;
+  }
+
+  function enforceSingleTransitionName(rootOrDocument, name, preferredElement) {
+    const matches = elementsWithTransitionName(rootOrDocument, name);
+    matches.forEach((element) => {
+      if (element !== preferredElement) {
+        element.style.viewTransitionName = '';
+      }
+    });
+
+    return preferredElement && preferredElement.style && preferredElement.style.viewTransitionName === name ? 1 : 0;
+  }
+
   function countNamedElements(rootOrDocument) {
     const root = rootOrDocument && rootOrDocument.querySelectorAll ? rootOrDocument : document;
     let count = 0;
@@ -351,6 +422,12 @@
       }
 
       elements.forEach((element, elementIndex) => {
+        const exclusionSelector = getExclusionSelectorForElement(element);
+        if (exclusionSelector) {
+          log('shared element skipped by exclusion', exclusionSelector, element);
+          return;
+        }
+
         const token = getSharedNameForElement(element, rule, elementIndex, context);
         if (seen.has(token)) {
           return;
@@ -385,7 +462,7 @@
       anchor.querySelector('img.wp-post-image, .wp-block-post-featured-image img, .post-thumbnail img, .featured-image img, img') ||
       (anchor.matches && anchor.matches('img') ? anchor : null) ||
       (anchor.closest && anchor.closest('figure, .wp-block-post-featured-image, .post-thumbnail, .featured-image') ? anchor.closest('figure, .wp-block-post-featured-image, .post-thumbnail, .featured-image').querySelector('img') : null) ||
-      (anchor.closest && anchor.closest('article, .wp-block-post, [class*="post-"]') ? anchor.closest('article, .wp-block-post, [class*="post-"]').querySelector('img.wp-post-image, .wp-block-post-featured-image img, .post-thumbnail img, .featured-image img') : null)
+      (anchor.closest && anchor.closest('article, .wp-block-post, [class*="post-"]') ? anchor.closest('article, .wp-block-post, [class*="post-"]').querySelector('img.wp-post-image, .wp-block-post-featured-image img, .post-thumbnail img, .featured-image img, img') : null)
     );
   }
 
@@ -428,7 +505,7 @@
 
   function buildClickContext(anchor) {
     const card = findPostLikeContainer(anchor);
-    const clickedImage = findClickedImage(anchor) || (card && card.querySelector ? card.querySelector('.wp-post-image, .wp-block-post-featured-image img, .post-thumbnail img, .featured-image img') : null);
+    const clickedImage = findClickedImage(anchor) || (card && card.querySelector ? card.querySelector('.wp-post-image, .wp-block-post-featured-image img, .post-thumbnail img, .featured-image img, img') : null);
     const clickedTitle = getClickedTitleElement(anchor) || (card && card.querySelector ? card.querySelector('.entry-title a, .wp-block-post-title a, .entry-title, .wp-block-post-title') : null);
     const clickedPostId = getCandidatePostIdFromElement(card);
     const clickedImageSrcToken = getImageSrcToken(clickedImage);
@@ -465,7 +542,15 @@
     let candidates = [];
 
     try {
-      candidates = Array.from(scope.querySelectorAll('main .wp-post-image, main .wp-block-post-featured-image img, main .post-thumbnail img, main .featured-image img, article .wp-post-image, article .wp-block-post-featured-image img, article .post-thumbnail img, article .featured-image img, main img'));
+      candidates = Array.from(scope.querySelectorAll('.wp-post-image, .wp-block-post-featured-image img, .post-thumbnail img, .featured-image img, article img.wp-post-image, article img, img'))
+        .filter((element) => {
+          const excluded = getExclusionSelectorForElement(element);
+          if (excluded) {
+            log('featured image candidate skipped by exclusion', excluded, element);
+            return false;
+          }
+          return true;
+        });
     } catch (error) {
       candidates = [];
     }
@@ -488,6 +573,23 @@
       const srcMatch = candidates.find((element) => getImageSrcToken(element) === context.clickedImageSrcToken);
       if (srcMatch) {
         return srcMatch;
+      }
+    }
+
+    const prioritySelectors = [
+      '.wp-post-image',
+      '.wp-block-post-featured-image img',
+      '.post-thumbnail img',
+      '.featured-image img',
+      'article img.wp-post-image',
+      'article img',
+      'img',
+    ];
+
+    for (let i = 0; i < prioritySelectors.length; i += 1) {
+      const match = candidates.find((element) => element.matches && element.matches(prioritySelectors[i]));
+      if (match) {
+        return match;
       }
     }
 
@@ -556,6 +658,12 @@
       return false;
     }
 
+    const exclusionSelector = getExclusionSelectorForElement(element);
+    if (exclusionSelector) {
+      log('active transition skipped by exclusion', exclusionSelector, name, element);
+      return false;
+    }
+
     if (element.setAttribute && !element.hasAttribute('data-ace-original-view-transition-name')) {
       element.setAttribute('data-ace-original-view-transition-name', element.style.viewTransitionName || '');
     }
@@ -574,8 +682,7 @@
 
     if (phase === 'current') {
       if (context.clickedImage && root.contains && root.contains(context.clickedImage)) {
-        assignActiveTransitionName(context.clickedImage, context.activeFeaturedImageName);
-        result.featured = 1;
+        result.featured = assignActiveTransitionName(context.clickedImage, context.activeFeaturedImageName) ? 1 : 0;
       }
 
       const titleElement = context.clickedTitle && context.clickedTitle.matches && context.clickedTitle.matches('a')
@@ -583,8 +690,7 @@
         : context.clickedTitle;
 
       if (titleElement && root.contains && root.contains(titleElement)) {
-        assignActiveTransitionName(titleElement, context.activeTitleName);
-        result.title = 1;
+        result.title = assignActiveTransitionName(titleElement, context.activeTitleName) ? 1 : 0;
       }
 
       return result;
@@ -593,14 +699,12 @@
     if (phase === 'incoming') {
       const featured = findCandidateFeaturedImage(root, context);
       if (featured) {
-        assignActiveTransitionName(featured, context.activeFeaturedImageName);
-        result.featured = 1;
+        result.featured = assignActiveTransitionName(featured, context.activeFeaturedImageName) ? 1 : 0;
       }
 
       const title = findCandidateTitle(root, context);
       if (title) {
-        assignActiveTransitionName(title, context.activeTitleName);
-        result.title = 1;
+        result.title = assignActiveTransitionName(title, context.activeTitleName) ? 1 : 0;
       }
     }
 
@@ -697,22 +801,10 @@
       return false;
     }
 
-    if (excludeList.length) {
-      for (let i = 0; i < excludeList.length; i += 1) {
-        const selector = excludeList[i];
-        if (!selector) {
-          continue;
-        }
-
-        try {
-          if (anchor.matches(selector) || anchor.closest(selector)) {
-            log('skip: excluded selector', selector, url.href);
-            return false;
-          }
-        } catch (error) {
-          continue;
-        }
-      }
+    const excludedBy = getExclusionSelectorForElement(anchor);
+    if (excludedBy) {
+      log('skip: excluded selector', excludedBy, url.href);
+      return false;
     }
 
     return true;
@@ -784,6 +876,58 @@
     };
   }
 
+  function applyActiveFeaturedImagePairNames(currentRoot, incomingRoot, context) {
+    const result = {
+      current: 0,
+      incoming: 0,
+    };
+
+    if (!context || !activeFeaturedImagePairing || !context.activeFeaturedImageName) {
+      return result;
+    }
+
+    const name = context.activeFeaturedImageName;
+    const sourceImage = context.clickedImage || null;
+
+    if (!sourceImage || !(currentRoot.contains && currentRoot.contains(sourceImage))) {
+      log('active featured pairing skipped: missing clicked source image');
+      return result;
+    }
+
+    if (isExcludedElement(sourceImage)) {
+      log('active featured pairing skipped: source excluded', getExclusionSelectorForElement(sourceImage), sourceImage);
+      return result;
+    }
+
+    const destinationImage = findCandidateFeaturedImage(incomingRoot, context);
+    if (!destinationImage) {
+      log('active featured pairing skipped: missing destination image');
+      return result;
+    }
+
+    if (isExcludedElement(destinationImage)) {
+      log('active featured pairing skipped: destination excluded', getExclusionSelectorForElement(destinationImage), destinationImage);
+      return result;
+    }
+
+    assignActiveTransitionName(sourceImage, name);
+    assignActiveTransitionName(destinationImage, name);
+
+    result.current = enforceSingleTransitionName(currentRoot, name, sourceImage);
+    result.incoming = enforceSingleTransitionName(incomingRoot, name, destinationImage);
+
+    if (result.current !== 1 || result.incoming !== 1) {
+      log('active featured pair incomplete, falling back to generic names', result);
+      removeViewTransitionName(currentRoot, name);
+      removeViewTransitionName(incomingRoot, name);
+      result.current = 0;
+      result.incoming = 0;
+    }
+
+    log('active featured pair counts', result);
+    return result;
+  }
+
   function swapDocument(currentShellElement, preparedIncomingShell, nextDoc, shellSelector) {
     if (nextDoc.title) {
       document.title = nextDoc.title;
@@ -797,6 +941,56 @@
     }
 
     return nextDoc;
+  }
+
+  function getNamedElements(rootOrDocument) {
+    const root = rootOrDocument && rootOrDocument.querySelectorAll ? rootOrDocument : document;
+    const named = [];
+
+    root.querySelectorAll('*').forEach((element) => {
+      if (element.style && element.style.viewTransitionName && element.style.viewTransitionName !== 'none') {
+        named.push({
+          element,
+          name: element.style.viewTransitionName,
+        });
+      }
+    });
+
+    return named;
+  }
+
+  function getExcludedMatches(rootOrDocument) {
+    const root = rootOrDocument && rootOrDocument.querySelectorAll ? rootOrDocument : document;
+    const matches = [];
+
+    if (!excludeList.length) {
+      return matches;
+    }
+
+    root.querySelectorAll('*').forEach((element) => {
+      const selector = getExclusionSelectorForElement(element);
+      if (selector) {
+        matches.push({
+          element,
+          selector,
+        });
+      }
+    });
+
+    return matches;
+  }
+
+  function exposeDebugUtility() {
+    if (!debugEnabled) {
+      return;
+    }
+
+    window.ACE_VIEW_TRANSITIONS_DEBUG = {
+      isExcludedElement,
+      elementsWithTransitionName,
+      getNamedElements,
+      getExcludedMatches,
+    };
   }
 
   function loadPage(url, options) {
@@ -856,6 +1050,10 @@
         const incomingPair = context && activeClickPairing && !debugDisableSharedElements
           ? applyActiveClickPairNames(incomingScope, context, 'incoming')
           : { featured: 0, title: 0 };
+
+        const activeFeaturedPair = !debugDisableSharedElements
+          ? applyActiveFeaturedImagePairNames(currentScope, incomingScope, context)
+          : { current: 0, incoming: 0 };
         const incomingDuplicates = debugDisableSharedElements ? [] : findDuplicateTransitionNames(incomingScope);
         if (incomingDuplicates.length) {
           log('duplicate transition names', incomingDuplicates);
@@ -865,6 +1063,8 @@
         const incomingShell = incomingScope;
         const currentActiveCount = activeCounts.current;
         const incomingActiveCount = activeCounts.incoming;
+        currentActiveCount.featured = Math.max(currentActiveCount.featured, activeFeaturedPair.current);
+        incomingActiveCount.featured = Math.max(incomingActiveCount.featured, activeFeaturedPair.incoming);
         const currentNamedCount = debugDisableSharedElements ? 0 : countNamedElements(currentScope);
         const incomingNamedCount = debugDisableSharedElements ? 0 : countNamedElements(incomingScope);
         const hasSharedTransition = currentNamedCount > 0 || incomingNamedCount > 0;
@@ -887,6 +1087,7 @@
           incomingGenericDuplicates: incomingDuplicates,
           current: currentActiveCount,
           incoming: incomingActiveCount,
+          activeFeaturedPair,
         });
 
         const update = () => swapDocument(currentScope, incomingShell, nextDoc, shellName);
@@ -964,7 +1165,7 @@
     event.preventDefault();
     log('intercepting navigation', anchor.href);
     const clickedUrl = new URL(anchor.getAttribute('href'), window.location.href);
-    const clickedContext = activeClickPairing ? buildClickContext(anchor) : null;
+    const clickedContext = activeClickPairing || activeFeaturedImagePairing ? buildClickContext(anchor) : null;
     loadPage(clickedUrl, {
       source: 'click',
       replaceHistory: false,
@@ -996,6 +1197,8 @@
     document.documentElement.setAttribute('data-ace-transition-mode', transitionMode);
     document.documentElement.setAttribute('data-ace-router', sameDocumentRouterEnabled ? 'same-document' : 'native');
     log('transition mode', transitionMode);
+    log('exclusion selector count', excludeList.length);
+    exposeDebugUtility();
 
     if (supportsViewTransitions) {
       enableDocumentTransition();

@@ -3,7 +3,10 @@
  * Plugin Name: Animated Continuity Effects
  * Description: Configurable view transition effects for WordPress, including shared element transitions and exclusions.
  * Version: 0.1.0
- * Author: OpenAI
+ * Author: Shane Rounce
+ * Author URI: https://github.com/AceMedia
+ * License: GPL-2.0-or-later
+ * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain: animated-continuity-effects
  */
 

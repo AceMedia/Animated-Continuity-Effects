@@ -148,6 +148,8 @@
       }, 0);
     });
 
+    // The next page is ready: stop before the leaving page is captured, so it is not frozen mid-spin.
+    window.addEventListener('pageswap', stopLoading);
     // Back to a page kept in the back-forward cache, or a navigation that failed: stop.
     window.addEventListener('pageshow', stopLoading);
     if (window.navigation && typeof window.navigation.addEventListener === 'function') {

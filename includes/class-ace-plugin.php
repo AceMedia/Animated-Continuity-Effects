@@ -66,6 +66,8 @@ class ACE_Continuity_Plugin {
         self::migrate_legacy_option();
         add_action('admin_menu', array($this, 'register_admin_menu'));
         add_action('wp_head', array($this, 'output_speculation_rules'), 40);
+        add_filter('wp_speculation_rules_configuration', array($this, 'filter_core_speculation_rules'));
+        add_filter('wp_speculation_rules_href_exclude_paths', array($this, 'filter_core_speculation_exclusions'));
         add_action('admin_init', array($this, 'register_settings'));
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_assets'));
         add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_assets'));
@@ -924,7 +926,9 @@ class ACE_Continuity_Plugin {
      * with "moderate"). Links to admin, login, feeds, query strings and any excluded path are left alone.
      */
     public function output_speculation_rules() {
-        if (is_admin() || is_user_logged_in()) {
+        // WordPress 6.8 and later print speculation rules themselves: this plugin then only sets their
+        // eagerness and extra exclusions through core's filters (below) rather than adding a second set.
+        if (is_admin() || is_user_logged_in() || function_exists('wp_get_speculation_rules_configuration')) {
             return;
         }
         $settings = $this->get_settings();
@@ -1324,5 +1328,39 @@ class ACE_Continuity_Plugin {
         <p class="description"><?php echo esc_html__('Prefetches same-site pages for visitors who are not logged in, using the browser\'s speculation rules. Admin, login, feeds and links with query strings are never prefetched. Extra paths to leave alone, one per line (wildcards allowed):', 'animated-continuity-effects'); ?></p>
         <textarea class="large-text code" rows="3" name="<?php echo esc_attr(ACE_CONTINUITY_OPTION . '[speculation_exclude]'); ?>" placeholder="/go/*"><?php echo esc_textarea($settings['speculation_exclude']); ?></textarea>
         <?php
+    }
+
+    /**
+     * Core speculative loading: prefetch with the chosen eagerness when this plugin's option is on.
+     *
+     * @param array<string, string>|null $config Core configuration.
+     * @return array<string, string>|null
+     */
+    public function filter_core_speculation_rules($config) {
+        $settings = $this->get_settings();
+        if (!in_array($settings['speculation'], array('conservative', 'moderate'), true)) {
+            return $config;
+        }
+        return array(
+            'mode' => 'prefetch',
+            'eagerness' => $settings['speculation'],
+        );
+    }
+
+    /**
+     * Core speculative loading: add this plugin's excluded paths.
+     *
+     * @param array<int, string> $paths Paths core already excludes.
+     * @return array<int, string>
+     */
+    public function filter_core_speculation_exclusions($paths) {
+        $settings = $this->get_settings();
+        foreach ((array) preg_split('/[\r\n,]+/', (string) $settings['speculation_exclude']) as $path) {
+            $path = trim((string) $path);
+            if ('' !== $path && '/' === $path[0]) {
+                $paths[] = $path;
+            }
+        }
+        return $paths;
     }
 }

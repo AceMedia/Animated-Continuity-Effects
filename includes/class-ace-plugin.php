@@ -4,8 +4,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-class ACE_Plugin {
-    /** @var ACE_Plugin|null */
+class ACE_Continuity_Plugin {
+    /** @var ACE_Continuity_Plugin|null */
     private static $instance = null;
 
     /** @var string */
@@ -17,7 +17,7 @@ class ACE_Plugin {
     /**
      * Get the singleton instance.
      *
-     * @return ACE_Plugin
+     * @return ACE_Continuity_Plugin
      */
     public static function instance() {
         if (null === self::$instance) {
@@ -31,8 +31,24 @@ class ACE_Plugin {
      * Activation callback.
      */
     public static function activate() {
-        if (false === get_option(ACE_OPTION_NAME, false)) {
-            add_option(ACE_OPTION_NAME, self::default_settings(), '', false);
+        if (false === get_option(ACE_CONTINUITY_OPTION, false)) {
+            add_option(ACE_CONTINUITY_OPTION, self::default_settings(), '', false);
+        }
+    }
+
+    /**
+     * Copy settings saved under the old, generic option name (`ace_settings`) to this plugin's own
+     * option. Other plugins use `ace_settings` too, so it is copied only when it looks like this
+     * plugin's settings, and the old option is never deleted.
+     */
+    private static function migrate_legacy_option() {
+        if (false !== get_option(ACE_CONTINUITY_OPTION, false)) {
+            return;
+        }
+
+        $legacy = get_option('ace_settings', false);
+        if (is_array($legacy) && isset($legacy['transition_mode'], $legacy['motion_preset'], $legacy['shared_elements'])) {
+            add_option(ACE_CONTINUITY_OPTION, $legacy, '', false);
         }
     }
 
@@ -47,7 +63,9 @@ class ACE_Plugin {
      * Constructor.
      */
     private function __construct() {
+        self::migrate_legacy_option();
         add_action('admin_menu', array($this, 'register_admin_menu'));
+        add_action('wp_head', array($this, 'output_speculation_rules'), 40);
         add_action('admin_init', array($this, 'register_settings'));
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_assets'));
         add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_assets'));
@@ -55,7 +73,7 @@ class ACE_Plugin {
         add_action('wp_head', array($this, 'output_frontend_inline_bootstrap'), 30);
         add_filter('render_block', array($this, 'apply_server_rendered_transition_names'), 20, 2);
         add_filter('post_thumbnail_html', array($this, 'apply_post_thumbnail_transition_name'), 20, 5);
-        add_action('update_option_' . ACE_OPTION_NAME, array($this, 'flush_cache_after_settings_update'), 10, 2);
+        add_action('update_option_' . ACE_CONTINUITY_OPTION, array($this, 'flush_cache_after_settings_update'), 10, 2);
     }
 
     /**
@@ -89,6 +107,12 @@ class ACE_Plugin {
             'name_scope' => 'post',
             'exclude_list' => '',
             'advanced_selectors' => '',
+            'persistent_selectors' => '',
+            'skip_transition_selectors' => '',
+            'loading_indicator_selector' => '',
+            'loading_indicator_animation' => 'spin',
+            'speculation' => 'off',
+            'speculation_exclude' => '',
         );
     }
 
@@ -233,7 +257,7 @@ class ACE_Plugin {
      * @return array<string, mixed>
      */
     private function get_settings() {
-        $stored = get_option(ACE_OPTION_NAME, array());
+        $stored = get_option(ACE_CONTINUITY_OPTION, array());
         if (!is_array($stored)) {
             $stored = array();
         }
@@ -522,8 +546,8 @@ class ACE_Plugin {
      */
     public function register_settings() {
         register_setting(
-            'ace_settings_group',
-            ACE_OPTION_NAME,
+            'ace_continuity_settings_group',
+            ACE_CONTINUITY_OPTION,
             array($this, 'sanitize_settings')
         );
 
@@ -634,6 +658,46 @@ class ACE_Plugin {
             'animated-continuity-effects',
             'ace_main_section'
         );
+
+        add_settings_field(
+            'persistent_selectors',
+            __('Regions that stay in place', 'animated-continuity-effects'),
+            array($this, 'render_textarea_field'),
+            'animated-continuity-effects',
+            'ace_main_section',
+            array(
+                'key' => 'persistent_selectors',
+                'help' => __('One CSS selector per line, each matching one element on the page, optionally followed by | and a media query (for example: .sidebar | (min-width: 1240px)). These regions do not fade between pages: the new page\'s version replaces the old one in place while the rest of the page transitions. Use it for fixed headers, navigation rails and docks.', 'animated-continuity-effects'),
+            )
+        );
+
+        add_settings_field(
+            'skip_transition_selectors',
+            __('Pages without a transition', 'animated-continuity-effects'),
+            array($this, 'render_textarea_field'),
+            'animated-continuity-effects',
+            'ace_main_section',
+            array(
+                'key' => 'skip_transition_selectors',
+                'help' => __('One per line. A CSS selector skips the transition when the page being left contains a match; a path starting with / (wildcards allowed, for example /map/*) skips it when that is the page being opened. Useful for full-screen apps and maps.', 'animated-continuity-effects'),
+            )
+        );
+
+        add_settings_field(
+            'loading_indicator_selector',
+            __('Loading indicator', 'animated-continuity-effects'),
+            array($this, 'render_loading_indicator_field'),
+            'animated-continuity-effects',
+            'ace_main_section'
+        );
+
+        add_settings_field(
+            'speculation',
+            __('Prefetch on intent', 'animated-continuity-effects'),
+            array($this, 'render_speculation_field'),
+            'animated-continuity-effects',
+            'ace_main_section'
+        );
     }
 
     /**
@@ -692,6 +756,14 @@ class ACE_Plugin {
         $output['exclude_list'] = implode(', ', array_map('sanitize_text_field', $exclude_items));
 
         $output['advanced_selectors'] = isset($input['advanced_selectors']) ? sanitize_textarea_field(wp_unslash($input['advanced_selectors'])) : '';
+        $output['persistent_selectors'] = isset($input['persistent_selectors']) ? sanitize_textarea_field(wp_unslash($input['persistent_selectors'])) : '';
+        $output['skip_transition_selectors'] = isset($input['skip_transition_selectors']) ? sanitize_textarea_field(wp_unslash($input['skip_transition_selectors'])) : '';
+        $output['loading_indicator_selector'] = isset($input['loading_indicator_selector']) ? sanitize_text_field(wp_unslash($input['loading_indicator_selector'])) : '';
+        $animation = isset($input['loading_indicator_animation']) ? sanitize_key(wp_unslash($input['loading_indicator_animation'])) : 'spin';
+        $output['loading_indicator_animation'] = in_array($animation, array('spin', 'pulse', 'none'), true) ? $animation : 'spin';
+        $speculation = isset($input['speculation']) ? sanitize_key(wp_unslash($input['speculation'])) : 'off';
+        $output['speculation'] = in_array($speculation, array('off', 'conservative', 'moderate'), true) ? $speculation : 'off';
+        $output['speculation_exclude'] = isset($input['speculation_exclude']) ? sanitize_textarea_field(wp_unslash($input['speculation_exclude'])) : '';
 
         return $output;
     }
@@ -707,8 +779,8 @@ class ACE_Plugin {
         }
 
         wp_enqueue_style(
-            'ace-admin',
-            ACE_PLUGIN_URL . 'assets/css/admin.css',
+            'ace-continuity-admin',
+            ACE_CONTINUITY_URL . 'assets/css/admin.css',
             array(),
             '0.1.0'
         );
@@ -724,18 +796,18 @@ class ACE_Plugin {
 
         $settings = $this->get_settings();
         $config = $this->build_frontend_config($settings);
-        $frontend_css = ACE_PLUGIN_DIR . 'assets/css/frontend.css';
-        $frontend_js = ACE_PLUGIN_DIR . 'assets/js/frontend.js';
+        $frontend_css = ACE_CONTINUITY_DIR . 'assets/css/frontend.css';
+        $frontend_js = ACE_CONTINUITY_DIR . 'assets/js/frontend.js';
 
         wp_enqueue_style(
             'ace-view-transitions-frontend',
-            ACE_PLUGIN_URL . 'assets/css/frontend.css',
+            ACE_CONTINUITY_URL . 'assets/css/frontend.css',
             array(),
             file_exists($frontend_css) ? (string) filemtime($frontend_css) : '0.1.0'
         );
         wp_register_script(
             'ace-view-transitions-frontend',
-            ACE_PLUGIN_URL . 'assets/js/frontend.js',
+            ACE_CONTINUITY_URL . 'assets/js/frontend.js',
             array(),
             file_exists($frontend_js) ? (string) filemtime($frontend_js) : '0.1.0',
             true
@@ -763,7 +835,126 @@ class ACE_Plugin {
         echo 'html.ace-view-transitions-enabled { view-transition-name: root; }';
         echo '::view-transition { background: transparent; }';
         echo '::view-transition-group(root) { animation-duration: ' . esc_html($config['cssVars']['--ace-view-transition-duration']) . '; animation-timing-function: ' . esc_html($config['cssVars']['--ace-view-transition-timing-function']) . '; }';
+        echo $this->persistent_region_css($settings); // phpcs:ignore WordPress.Security.EscapeOutput -- built from cleaned selectors
+        echo $this->loading_indicator_css($settings); // phpcs:ignore WordPress.Security.EscapeOutput -- built from a cleaned selector
         echo '</style>';
+    }
+
+    /**
+     * Clean a selector or media query for use inside a style element: no markup, no new rules.
+     *
+     * @param string $value Raw value.
+     * @return string
+     */
+    private static function clean_css_fragment($value) {
+        $value = str_replace(array('<', '{', '}', ';', '@', '\\'), '', (string) $value);
+        return trim(preg_replace('/\s+/', ' ', $value));
+    }
+
+    /**
+     * Parse the "regions that stay in place" lines: a selector, then optionally | and a media query.
+     *
+     * @param string $raw Raw textarea value.
+     * @return array<int, array<string, string>>
+     */
+    private function parse_persistent_selectors($raw) {
+        $regions = array();
+        foreach ((array) preg_split('/\r\n|\r|\n/', (string) $raw) as $line) {
+            $parts = array_map('trim', explode('|', (string) $line, 2));
+            $selector = self::clean_css_fragment($parts[0]);
+            if ('' === $selector) {
+                continue;
+            }
+            $media = isset($parts[1]) ? self::clean_css_fragment($parts[1]) : '';
+            $regions[] = array('selector' => $selector, 'media' => $media);
+        }
+        return $regions;
+    }
+
+    /**
+     * CSS that gives each persistent region a stable transition name and swaps it without animating,
+     * so it stays where it is while the rest of the page transitions.
+     *
+     * @param array<string, mixed> $settings Settings.
+     * @return string
+     */
+    private function persistent_region_css(array $settings) {
+        $css = '';
+        foreach ($this->parse_persistent_selectors($settings['persistent_selectors']) as $index => $region) {
+            $name = 'ace-persist-' . ($index + 1);
+            $rule = $region['selector'] . ' { view-transition-name: ' . $name . '; }';
+            $css .= '' !== $region['media'] ? '@media ' . $region['media'] . ' { ' . $rule . ' }' : $rule;
+            $css .= '::view-transition-group(' . $name . '), ::view-transition-new(' . $name . ') { animation: none; }';
+            $css .= '::view-transition-old(' . $name . ') { animation: none; display: none; }';
+        }
+        return $css;
+    }
+
+    /**
+     * CSS for the loading indicator: while a navigation is under way the chosen element spins (or
+     * pulses). It animates the independent `rotate` property, so it never fights an element's own
+     * transform; with reduced motion it dims instead of moving.
+     *
+     * @param array<string, mixed> $settings Settings.
+     * @return string
+     */
+    private function loading_indicator_css(array $settings) {
+        $selector = self::clean_css_fragment($settings['loading_indicator_selector']);
+        if ('' === $selector || 'none' === $settings['loading_indicator_animation']) {
+            return '';
+        }
+        $scoped = implode(', ', array_map(function ($part) {
+            return 'html.ace-continuity-loading ' . trim($part);
+        }, explode(',', $selector)));
+        $reduced = implode(', ', array_map(function ($part) {
+            return 'html.ace-continuity-loading.ace-continuity-reduced ' . trim($part);
+        }, explode(',', $selector)));
+        $css = '@keyframes ace-continuity-spin { from { rotate: 0deg; } to { rotate: 360deg; } }';
+        $css .= '@keyframes ace-continuity-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }';
+        $css .= 'pulse' === $settings['loading_indicator_animation']
+            ? $scoped . ' { animation: ace-continuity-pulse 1s ease-in-out infinite; }'
+            : $scoped . ' { animation: ace-continuity-spin .9s linear infinite; }';
+        $css .= $reduced . ' { animation: none; opacity: .55; }';
+        return $css;
+    }
+
+    /**
+     * Speculation rules: prefetch same-site pages when the reader shows intent (pointer down, or hover
+     * with "moderate"). Links to admin, login, feeds, query strings and any excluded path are left alone.
+     */
+    public function output_speculation_rules() {
+        if (is_admin() || is_user_logged_in()) {
+            return;
+        }
+        $settings = $this->get_settings();
+        if (!in_array($settings['speculation'], array('conservative', 'moderate'), true)) {
+            return;
+        }
+        $not = array(
+            array('href_matches' => '/wp-admin/*'),
+            array('href_matches' => '/wp-login.php*'),
+            array('href_matches' => '/wp-json/*'),
+            array('href_matches' => '/*feed*'),
+            array('href_matches' => '/*\\?*'),
+            array('selector_matches' => '[rel~="nofollow"], [download], [target="_blank"]'),
+        );
+        foreach ((array) preg_split('/[\r\n,]+/', (string) $settings['speculation_exclude']) as $path) {
+            $path = trim((string) $path);
+            if ('' !== $path && '/' === $path[0]) {
+                $not[] = array('href_matches' => esc_url_raw($path));
+            }
+        }
+        $rules = array(
+            'prefetch' => array(
+                array(
+                    'where' => array('and' => array_merge(array(array('href_matches' => '/*')), array_map(function ($rule) {
+                        return array('not' => $rule);
+                    }, $not))),
+                    'eagerness' => $settings['speculation'],
+                ),
+            ),
+        );
+        echo "\n" . '<script type="speculationrules">' . wp_json_encode($rules, JSON_UNESCAPED_SLASHES) . '</script>' . "\n";
     }
 
     /**
@@ -787,7 +978,7 @@ class ACE_Plugin {
      * @return array<string, mixed>
      */
     private function build_frontend_config(array $settings) {
-        if (defined('ACE_FORCE_CROSS_DOCUMENT') && ACE_FORCE_CROSS_DOCUMENT) {
+        if ((defined('ACE_CONTINUITY_FORCE_CROSS_DOCUMENT') && ACE_CONTINUITY_FORCE_CROSS_DOCUMENT) || (defined('ACE_FORCE_CROSS_DOCUMENT') && ACE_FORCE_CROSS_DOCUMENT)) {
             $settings['transition_mode'] = 'cross-document';
         }
 
@@ -843,7 +1034,11 @@ class ACE_Plugin {
                 '.site-footer',
                 '.wp-site-blocks > footer',
             ),
-            'skipTransitionSelectors' => array(),
+            'skipTransitionSelectors' => $this->parse_exclude_list($settings['skip_transition_selectors']),
+            'loadingIndicator' => array(
+                'selector' => self::clean_css_fragment($settings['loading_indicator_selector']),
+                'animation' => $settings['loading_indicator_animation'],
+            ),
             'debug' => current_user_can('manage_options'),
         );
     }
@@ -911,7 +1106,7 @@ class ACE_Plugin {
             <p class="description"><?php echo esc_html__('Changing defaults in code does not change existing saved settings. Save this page to update the live mode.', 'animated-continuity-effects'); ?></p>
             <form action="options.php" method="post">
                 <?php
-                settings_fields('ace_settings_group');
+                settings_fields('ace_continuity_settings_group');
                 do_settings_sections('animated-continuity-effects');
                 submit_button();
                 ?>
@@ -929,7 +1124,7 @@ class ACE_Plugin {
         $settings = $this->get_settings();
         $presets = self::motion_presets();
         ?>
-        <select name="<?php echo esc_attr(ACE_OPTION_NAME . '[motion_preset]'); ?>">
+        <select name="<?php echo esc_attr(ACE_CONTINUITY_OPTION . '[motion_preset]'); ?>">
             <?php foreach ($presets as $key => $preset) : ?>
                 <option value="<?php echo esc_attr($key); ?>" <?php selected($settings['motion_preset'], $key); ?>><?php echo esc_html($preset['label']); ?></option>
             <?php endforeach; ?>
@@ -943,7 +1138,7 @@ class ACE_Plugin {
     public function render_transition_mode_field() {
         $settings = $this->get_settings();
         ?>
-        <select name="<?php echo esc_attr(ACE_OPTION_NAME . '[transition_mode]'); ?>">
+        <select name="<?php echo esc_attr(ACE_CONTINUITY_OPTION . '[transition_mode]'); ?>">
             <option value="cross-document" <?php selected($settings['transition_mode'], 'cross-document'); ?>><?php echo esc_html__('Native browser navigation, recommended', 'animated-continuity-effects'); ?></option>
             <option value="same-document" <?php selected($settings['transition_mode'], 'same-document'); ?>><?php echo esc_html__('AJAX shell swap, experimental', 'animated-continuity-effects'); ?></option>
         </select>
@@ -959,7 +1154,7 @@ class ACE_Plugin {
         $settings = $this->get_settings();
         $styles = self::animation_styles();
         ?>
-        <select name="<?php echo esc_attr(ACE_OPTION_NAME . '[animation_style]'); ?>">
+        <select name="<?php echo esc_attr(ACE_CONTINUITY_OPTION . '[animation_style]'); ?>">
             <?php foreach ($styles as $key => $style) : ?>
                 <option value="<?php echo esc_attr($key); ?>" <?php selected(isset($settings['animation_style']) ? $settings['animation_style'] : 'fade', $key); ?>><?php echo esc_html($style['label']); ?></option>
             <?php endforeach; ?>
@@ -979,7 +1174,7 @@ class ACE_Plugin {
         $label = isset($args['label']) ? $args['label'] : '';
         ?>
         <label>
-            <input type="checkbox" name="<?php echo esc_attr(ACE_OPTION_NAME . '[' . $key . ']'); ?>" value="1" <?php checked(isset($settings[$key]) ? $settings[$key] : '0', '1'); ?>>
+            <input type="checkbox" name="<?php echo esc_attr(ACE_CONTINUITY_OPTION . '[' . $key . ']'); ?>" value="1" <?php checked(isset($settings[$key]) ? $settings[$key] : '0', '1'); ?>>
             <?php echo esc_html($label); ?>
         </label>
         <?php
@@ -991,7 +1186,7 @@ class ACE_Plugin {
     public function render_duration_field() {
         $settings = $this->get_settings();
         ?>
-        <select name="<?php echo esc_attr(ACE_OPTION_NAME . '[duration]'); ?>">
+        <select name="<?php echo esc_attr(ACE_CONTINUITY_OPTION . '[duration]'); ?>">
             <?php foreach (array('150ms', '250ms', '350ms', '500ms', '700ms', '900ms') as $value) : ?>
                 <option value="<?php echo esc_attr($value); ?>" <?php selected($settings['duration'], $value); ?>><?php echo esc_html($value); ?></option>
             <?php endforeach; ?>
@@ -1013,7 +1208,7 @@ class ACE_Plugin {
             'linear' => 'Linear',
         );
         ?>
-        <select name="<?php echo esc_attr(ACE_OPTION_NAME . '[timing_function]'); ?>">
+        <select name="<?php echo esc_attr(ACE_CONTINUITY_OPTION . '[timing_function]'); ?>">
             <?php foreach ($options as $value => $label) : ?>
                 <option value="<?php echo esc_attr($value); ?>" <?php selected($settings['timing_function'], $value); ?>><?php echo esc_html($label); ?></option>
             <?php endforeach; ?>
@@ -1033,7 +1228,7 @@ class ACE_Plugin {
                 <label class="ace-card">
                     <strong><?php echo esc_html($preset['label']); ?></strong>
                     <span><?php echo esc_html($preset['selector']); ?></span>
-                    <input type="checkbox" name="<?php echo esc_attr(ACE_OPTION_NAME . '[shared_elements][' . $key . ']'); ?>" value="1" <?php checked(isset($settings['shared_elements'][$key]) ? $settings['shared_elements'][$key] : '0', '1'); ?>>
+                    <input type="checkbox" name="<?php echo esc_attr(ACE_CONTINUITY_OPTION . '[shared_elements][' . $key . ']'); ?>" value="1" <?php checked(isset($settings['shared_elements'][$key]) ? $settings['shared_elements'][$key] : '0', '1'); ?>>
                 </label>
             <?php endforeach; ?>
         </div>
@@ -1052,7 +1247,7 @@ class ACE_Plugin {
                 <label class="ace-card">
                     <strong><?php echo esc_html($preset['label']); ?></strong>
                     <span><?php echo esc_html($preset['selector']); ?></span>
-                    <input type="checkbox" name="<?php echo esc_attr(ACE_OPTION_NAME . '[persistent_elements][' . $key . ']'); ?>" value="1" <?php checked(isset($settings['persistent_elements'][$key]) ? $settings['persistent_elements'][$key] : '0', '1'); ?>>
+                    <input type="checkbox" name="<?php echo esc_attr(ACE_CONTINUITY_OPTION . '[persistent_elements][' . $key . ']'); ?>" value="1" <?php checked(isset($settings['persistent_elements'][$key]) ? $settings['persistent_elements'][$key] : '0', '1'); ?>>
                 </label>
             <?php endforeach; ?>
         </div>
@@ -1066,7 +1261,7 @@ class ACE_Plugin {
     public function render_exclusions_field() {
         $settings = $this->get_settings();
         ?>
-        <textarea class="large-text" rows="4" name="<?php echo esc_attr(ACE_OPTION_NAME . '[exclude_list]'); ?>"><?php echo esc_textarea($settings['exclude_list']); ?></textarea>
+        <textarea class="large-text" rows="4" name="<?php echo esc_attr(ACE_CONTINUITY_OPTION . '[exclude_list]'); ?>"><?php echo esc_textarea($settings['exclude_list']); ?></textarea>
         <p class="description"><?php echo esc_html__('Comma-separated classes or IDs, for example: .no-transition, #cart, .skip-view-transition', 'animated-continuity-effects'); ?></p>
         <?php
     }
@@ -1077,8 +1272,56 @@ class ACE_Plugin {
     public function render_advanced_selectors_field() {
         $settings = $this->get_settings();
         ?>
-        <textarea class="large-text" rows="4" name="<?php echo esc_attr(ACE_OPTION_NAME . '[advanced_selectors]'); ?>"><?php echo esc_textarea($settings['advanced_selectors']); ?></textarea>
+        <textarea class="large-text" rows="4" name="<?php echo esc_attr(ACE_CONTINUITY_OPTION . '[advanced_selectors]'); ?>"><?php echo esc_textarea($settings['advanced_selectors']); ?></textarea>
         <p class="description"><?php echo esc_html__('Optional. One selector per line in the form: Label | selector. This is for custom shared elements beyond the presets.', 'animated-continuity-effects'); ?></p>
+        <?php
+    }
+
+    /**
+     * Render a textarea field.
+     *
+     * @param array<string, mixed> $args Arguments.
+     */
+    public function render_textarea_field($args) {
+        $settings = $this->get_settings();
+        $key = isset($args['key']) ? $args['key'] : '';
+        ?>
+        <textarea class="large-text code" rows="5" name="<?php echo esc_attr(ACE_CONTINUITY_OPTION . '[' . $key . ']'); ?>"><?php echo esc_textarea(isset($settings[$key]) ? $settings[$key] : ''); ?></textarea>
+        <?php if (!empty($args['help'])) : ?>
+            <p class="description"><?php echo esc_html($args['help']); ?></p>
+        <?php endif; ?>
+        <?php
+    }
+
+    /**
+     * Render the loading indicator fields.
+     */
+    public function render_loading_indicator_field() {
+        $settings = $this->get_settings();
+        ?>
+        <input type="text" class="regular-text code" name="<?php echo esc_attr(ACE_CONTINUITY_OPTION . '[loading_indicator_selector]'); ?>" value="<?php echo esc_attr($settings['loading_indicator_selector']); ?>" placeholder=".site-logo img">
+        <select name="<?php echo esc_attr(ACE_CONTINUITY_OPTION . '[loading_indicator_animation]'); ?>">
+            <option value="spin" <?php selected($settings['loading_indicator_animation'], 'spin'); ?>><?php echo esc_html__('Spin', 'animated-continuity-effects'); ?></option>
+            <option value="pulse" <?php selected($settings['loading_indicator_animation'], 'pulse'); ?>><?php echo esc_html__('Pulse', 'animated-continuity-effects'); ?></option>
+            <option value="none" <?php selected($settings['loading_indicator_animation'], 'none'); ?>><?php echo esc_html__('Off', 'animated-continuity-effects'); ?></option>
+        </select>
+        <p class="description"><?php echo esc_html__('An element (a logo mark, for example) that spins from the moment an internal link is followed until the next page appears. It works in every browser, with or without view transitions, and dims instead of moving for readers who prefer reduced motion.', 'animated-continuity-effects'); ?></p>
+        <?php
+    }
+
+    /**
+     * Render the speculation rules fields.
+     */
+    public function render_speculation_field() {
+        $settings = $this->get_settings();
+        ?>
+        <select name="<?php echo esc_attr(ACE_CONTINUITY_OPTION . '[speculation]'); ?>">
+            <option value="off" <?php selected($settings['speculation'], 'off'); ?>><?php echo esc_html__('Off', 'animated-continuity-effects'); ?></option>
+            <option value="conservative" <?php selected($settings['speculation'], 'conservative'); ?>><?php echo esc_html__('Conservative: when a link is pressed', 'animated-continuity-effects'); ?></option>
+            <option value="moderate" <?php selected($settings['speculation'], 'moderate'); ?>><?php echo esc_html__('Moderate: when a link is hovered', 'animated-continuity-effects'); ?></option>
+        </select>
+        <p class="description"><?php echo esc_html__('Prefetches same-site pages for visitors who are not logged in, using the browser\'s speculation rules. Admin, login, feeds and links with query strings are never prefetched. Extra paths to leave alone, one per line (wildcards allowed):', 'animated-continuity-effects'); ?></p>
+        <textarea class="large-text code" rows="3" name="<?php echo esc_attr(ACE_CONTINUITY_OPTION . '[speculation_exclude]'); ?>" placeholder="/go/*"><?php echo esc_textarea($settings['speculation_exclude']); ?></textarea>
         <?php
     }
 }

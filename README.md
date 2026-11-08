@@ -45,7 +45,7 @@ git clone https://github.com/AceMedia/Animated-Continuity-Effects.git
 
 ## Configuration
 
-All settings are stored in one option, `ace_settings`. Deactivating the plugin keeps your settings.
+All settings are stored in one option, `ace_continuity_settings`. Deactivating the plugin keeps your settings. Sites that saved settings under the old option name, `ace_settings`, have them copied across on the first load of 0.2.0, but only when that option looks like this plugin's settings, because other plugins use the same name; the old option is never deleted.
 
 Shared element transitions rely on stable selectors in your theme or block markup. If an element does not animate, check that it matches the selector for that preset or add your own under advanced selectors.
 
@@ -65,3 +65,13 @@ GPL-2.0-or-later. See the `LICENSE` file.
 
 Shane Rounce, [AceMedia](https://acemedia.ninja).
 Repository: https://github.com/AceMedia/Animated-Continuity-Effects
+
+## Since 0.2.0
+
+- **Regions that stay in place.** One selector per line, optionally `| (media query)`. Each region gets a stable transition name and swaps without animating, so a fixed header, navigation rail or dock stays put while the rest of the page transitions.
+- **Pages without a transition.** Selectors skip the transition when the page being left matches; paths starting with `/` (wildcards allowed) skip it when that is the page being opened.
+- **Loading indicator.** Any element can spin (or pulse) from the moment an internal link or same-site GET form is followed until the next page appears. It animates the independent `rotate` property, so it never fights an element's own transform, works without view transition support, stops on back-forward cache restores and failed navigations, and dims instead of moving for readers who prefer reduced motion.
+- **Prefetch on intent.** Optional speculation rules (pointer down, or hover) for visitors who are not logged in; admin, login, feeds, query strings and listed paths are never prefetched.
+- Reduced motion now also honours `html.ace-a11y-reduce-motion` and `window.aceReducedMotion`, and the leaving page skips the transition for those readers.
+- Constants, class and option renamed to `ACE_CONTINUITY_*`, `ACE_Continuity_Plugin` and `ace_continuity_settings`, so the plugin no longer clashes with other Ace plugins.
+

@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Animated Continuity Effects
  * Description: Configurable view transition effects for WordPress, including shared element transitions and exclusions.
- * Version: 0.1.0
+ * Version: 0.2.0
  * Author: Shane Rounce
  * Author URI: https://github.com/AceMedia
  * License: GPL-2.0-or-later
@@ -14,16 +14,16 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('ACE_PLUGIN_FILE', __FILE__);
-define('ACE_PLUGIN_DIR', plugin_dir_path(__FILE__));
-define('ACE_PLUGIN_URL', plugin_dir_url(__FILE__));
-define('ACE_OPTION_NAME', 'ace_settings');
+define('ACE_CONTINUITY_FILE', __FILE__);
+define('ACE_CONTINUITY_DIR', plugin_dir_path(__FILE__));
+define('ACE_CONTINUITY_URL', plugin_dir_url(__FILE__));
+define('ACE_CONTINUITY_OPTION', 'ace_continuity_settings');
 
-require_once ACE_PLUGIN_DIR . 'includes/class-ace-plugin.php';
+require_once ACE_CONTINUITY_DIR . 'includes/class-ace-plugin.php';
 
-register_activation_hook(__FILE__, array('ACE_Plugin', 'activate'));
-register_deactivation_hook(__FILE__, array('ACE_Plugin', 'deactivate'));
+register_activation_hook(__FILE__, array('ACE_Continuity_Plugin', 'activate'));
+register_deactivation_hook(__FILE__, array('ACE_Continuity_Plugin', 'deactivate'));
 
 add_action('plugins_loaded', function () {
-    ACE_Plugin::instance();
+    ACE_Continuity_Plugin::instance();
 });

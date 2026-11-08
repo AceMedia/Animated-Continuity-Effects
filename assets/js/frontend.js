@@ -4,7 +4,11 @@
   const config = window.ACE_VIEW_TRANSITIONS || {};
   const cssVars = config.cssVars || {};
   const excludeList = normalizeSelectorList(config.excludeList);
-  const skipTransitionList = normalizeSelectorList(config.skipTransitionList || config.skipTransitionSelectors);
+  // Skip entries starting with "/" are destination paths (wildcards allowed); the rest are selectors.
+  const skipTransitionEntries = normalizeSelectorList(config.skipTransitionList || config.skipTransitionSelectors);
+  const skipTransitionList = skipTransitionEntries.filter((entry) => entry.charAt(0) !== '/');
+  const skipTransitionPaths = skipTransitionEntries.filter((entry) => entry.charAt(0) === '/').map((entry) => new RegExp('^' + entry.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$'));
+  const loadingIndicator = config.loadingIndicator && config.loadingIndicator.selector && config.loadingIndicator.animation !== 'none' ? config.loadingIndicator : null;
   const sameElementRules = Array.isArray(config.sameElementRules) ? config.sameElementRules : [];
   const nameScope = typeof config.nameScope === 'string' && config.nameScope ? config.nameScope : 'post';
   const enableRootTransition = config.enableRootTransition !== false;
@@ -61,7 +65,94 @@
   }
 
   function isReducedMotion() {
-    return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    const root = document.documentElement;
+    return window.aceReducedMotion === true
+      || !!(root && root.classList.contains('ace-a11y-reduce-motion'))
+      || !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  }
+
+  function isSkippedDestination(url) {
+    if (!url || !skipTransitionPaths.length) {
+      return false;
+    }
+    let path = '';
+    try {
+      path = new URL(url, window.location.href).pathname;
+    } catch (error) {
+      return false;
+    }
+    return skipTransitionPaths.some((pattern) => pattern.test(path) || pattern.test(path.replace(/\/$/, '')));
+  }
+
+  /* Loading indicator: from the moment an internal link is followed (or a same-site GET form is sent)
+     until the next page shows. It does not depend on view transition support. */
+  let loadingTimer = 0;
+
+  function startLoading() {
+    if (!loadingIndicator) {
+      return;
+    }
+    const root = document.documentElement;
+    root.classList.toggle('ace-continuity-reduced', isReducedMotion());
+    root.classList.add('ace-continuity-loading');
+    window.clearTimeout(loadingTimer);
+    // A navigation that never leaves (a download, a stopped load) stops the indicator after a while.
+    loadingTimer = window.setTimeout(stopLoading, 15000);
+  }
+
+  function stopLoading() {
+    window.clearTimeout(loadingTimer);
+    document.documentElement.classList.remove('ace-continuity-loading');
+  }
+
+  function setupLoadingIndicator() {
+    if (!loadingIndicator) {
+      return;
+    }
+
+    document.addEventListener('click', (event) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+        return;
+      }
+      const anchor = event.target && event.target.closest ? event.target.closest('a[href]') : null;
+      if (!anchor || !isEligibleLink(anchor)) {
+        return;
+      }
+      // Let every other click handler run first: a link that opens a sheet or is handled by a script
+      // cancels the click, and then nothing is loading.
+      window.setTimeout(() => {
+        if (!event.defaultPrevented) {
+          startLoading();
+        }
+      }, 0);
+    });
+
+    document.addEventListener('submit', (event) => {
+      const form = event.target;
+      if (!form || form.tagName !== 'FORM' || (form.method || 'get').toLowerCase() !== 'get' || form.target === '_blank') {
+        return;
+      }
+      let action;
+      try {
+        action = new URL(form.getAttribute('action') || window.location.href, window.location.href);
+      } catch (error) {
+        return;
+      }
+      if (action.origin !== window.location.origin || isExcludedElement(form)) {
+        return;
+      }
+      window.setTimeout(() => {
+        if (!event.defaultPrevented) {
+          startLoading();
+        }
+      }, 0);
+    });
+
+    // Back to a page kept in the back-forward cache, or a navigation that failed: stop.
+    window.addEventListener('pageshow', stopLoading);
+    if (window.navigation && typeof window.navigation.addEventListener === 'function') {
+      window.navigation.addEventListener('navigateerror', stopLoading);
+    }
   }
 
   function applyCssVariables() {
@@ -803,8 +894,15 @@
         return;
       }
 
-      if (hasSkipTransitionMatch(document)) {
-        log('pageswap skipped by skip-transition selector');
+      const destination = event.activation && event.activation.entry ? event.activation.entry.url : '';
+      if (hasSkipTransitionMatch(document) || isSkippedDestination(destination)) {
+        log('pageswap skipped by skip-transition selector or destination', destination);
+        event.viewTransition.skipTransition();
+        return;
+      }
+
+      // A reader's reduced motion choice is the same on both pages, so the leaving page can skip.
+      if (respectReducedMotion && isReducedMotion()) {
         event.viewTransition.skipTransition();
       }
     });
@@ -1297,6 +1395,7 @@
     log('skip-transition selector count', skipTransitionList.length);
     log('persistent selector count', persistentSelectors.length);
     exposeDebugUtility();
+    setupLoadingIndicator();
 
     if (supportsViewTransitions) {
       enableDocumentTransition();

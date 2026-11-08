@@ -884,8 +884,9 @@ class ACE_Continuity_Plugin {
             $name = 'ace-persist-' . ($index + 1);
             $rule = $region['selector'] . ' { view-transition-name: ' . $name . '; }';
             $css .= '' !== $region['media'] ? '@media ' . $region['media'] . ' { ' . $rule . ' }' : $rule;
-            $css .= '::view-transition-group(' . $name . '), ::view-transition-new(' . $name . ') { animation: none; }';
-            $css .= '::view-transition-old(' . $name . ') { animation: none; display: none; }';
+            // No animation on either side: the new page's version is drawn over the old one, which only
+            // shows when the new page has no such region yet (one a script builds after load, say).
+            $css .= '::view-transition-group(' . $name . '), ::view-transition-old(' . $name . '), ::view-transition-new(' . $name . ') { animation: none; }';
         }
         return $css;
     }

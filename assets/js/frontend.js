@@ -148,8 +148,32 @@
       }, 0);
     });
 
-    // The next page is ready: stop before the leaving page is captured, so it is not frozen mid-spin.
-    window.addEventListener('pageswap', stopLoading);
+    // The next page is ready. A spinning indicator hands its angle to the next page, which carries on
+    // from there and eases round to upright (see output_frontend_inline_bootstrap), so it never snaps;
+    // a pulse just stops.
+    window.addEventListener('pageswap', () => {
+      const root = document.documentElement;
+      const el = loadingIndicator.animation === 'spin' && root.classList.contains('ace-continuity-loading') && !root.classList.contains('ace-continuity-reduced')
+        ? document.querySelector(loadingIndicator.selector) : null;
+      if (!el) {
+        stopLoading();
+        return;
+      }
+      try {
+        const angle = parseFloat(window.getComputedStyle(el).rotate) || 0;
+        window.sessionStorage.setItem('aceContinuitySpin', JSON.stringify({ a: angle, t: Date.now() }));
+      } catch (error) {
+        stopLoading();
+      }
+    });
+    document.addEventListener('animationend', (event) => {
+      if (event.animationName === 'ace-continuity-spin-finish') {
+        const root = document.documentElement;
+        root.classList.remove('ace-continuity-spin-finish');
+        root.style.removeProperty('--ace-spin-from');
+        root.style.removeProperty('--ace-spin-dur');
+      }
+    });
     // Back to a page kept in the back-forward cache, or a navigation that failed: stop.
     window.addEventListener('pageshow', stopLoading);
     if (window.navigation && typeof window.navigation.addEventListener === 'function') {

@@ -920,6 +920,16 @@ class ACE_Continuity_Plugin {
             ? $scoped . ' { animation: ace-continuity-pulse 1s ease-in-out infinite; }'
             : $scoped . ' { animation: ace-continuity-spin .9s linear infinite; }';
         $css .= $reduced . ' { animation: none; opacity: .55; }';
+        if ('spin' === $settings['loading_indicator_animation']) {
+            // The next page carries on from the angle the spin had reached and eases round to rest,
+            // instead of snapping back to upright (the angle is handed over by frontend.js on pageswap
+            // and picked up by the head script in output_frontend_inline_bootstrap()).
+            $finish = implode(', ', array_map(function ($part) {
+                return 'html.ace-continuity-spin-finish:not(.ace-continuity-loading) ' . trim($part);
+            }, explode(',', $selector)));
+            $css .= '@keyframes ace-continuity-spin-finish { from { rotate: var(--ace-spin-from, 0deg); } to { rotate: 360deg; } }';
+            $css .= $finish . ' { animation: ace-continuity-spin-finish var(--ace-spin-dur, .6s) cubic-bezier(.2, .7, .3, 1) both; }';
+        }
         return $css;
     }
 
@@ -976,6 +986,11 @@ class ACE_Continuity_Plugin {
         $config = $this->build_frontend_config($settings);
         $router = !empty($config['sameDocumentRouterEnabled']) ? 'same-document' : 'native';
         echo "\n<!-- ACE transition mode: " . esc_html($config['transitionMode']) . '; router: ' . esc_html($router) . " -->\n";
+        // Picks up the loading spin where the last page left it, before the first paint, so the
+        // indicator finishes its turn rather than appearing upright. Stale hand-overs are ignored.
+        if (!empty($config['loadingIndicator']) && isset($settings['loading_indicator_animation']) && 'spin' === $settings['loading_indicator_animation']) {
+            echo "<script id=\"ace-continuity-spin-finish\">(function(){try{var k='aceContinuitySpin',s=sessionStorage.getItem(k);if(!s)return;sessionStorage.removeItem(k);var d=JSON.parse(s);if(!d||Date.now()-d.t>4000)return;var a=((d.a%360)+360)%360;if(a<2||a>358)return;var h=document.documentElement;h.style.setProperty('--ace-spin-from',a+'deg');h.style.setProperty('--ace-spin-dur',Math.max(.35,(360-a)/360*1.1).toFixed(2)+'s');h.classList.add('ace-continuity-spin-finish');}catch(e){}})();</script>\n"; // phpcs:ignore WordPress.Security.EscapeOutput -- static script
+        }
     }
 
     /**

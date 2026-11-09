@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Animated Continuity Effects
  * Description: Configurable view transition effects for WordPress, including shared element transitions and exclusions.
- * Version: 0.2.0
+ * Version: 0.2.1
  * Author: Shane Rounce
  * Author URI: https://github.com/AceMedia
  * License: GPL-2.0-or-later

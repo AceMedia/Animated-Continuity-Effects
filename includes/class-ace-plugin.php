@@ -840,6 +840,32 @@ class ACE_Continuity_Plugin {
         echo $this->persistent_region_css($settings); // phpcs:ignore WordPress.Security.EscapeOutput -- built from cleaned selectors
         echo $this->loading_indicator_css($settings); // phpcs:ignore WordPress.Security.EscapeOutput -- built from a cleaned selector
         echo '</style>';
+        echo $this->document_hints_script($config); // phpcs:ignore WordPress.Security.EscapeOutput -- JSON-encoded config
+    }
+
+    /**
+     * The document's transition classes and variables, set in the head before the first frame instead of
+     * by the deferred script after it. On a page reached by a cross-document transition the transition
+     * starts at that first frame: if the classes and variables arrived afterwards, the styles they switch
+     * on (the chosen animation, its timing, any theme rules keyed to them) would replace the running
+     * animation mid-way and restart it, so the page seemed to change twice. The script sets the same
+     * values again later, which changes nothing.
+     *
+     * @param array<string, mixed> $config Frontend config.
+     * @return string
+     */
+    private function document_hints_script($config) {
+        $hints = array(
+            'style' => isset($config['animationStyle']) && is_string($config['animationStyle']) && '' !== $config['animationStyle'] ? $config['animationStyle'] : 'fade',
+            'vars'  => isset($config['cssVars']) && is_array($config['cssVars']) ? array_filter($config['cssVars']) : array(),
+            'root'  => !isset($config['enableRootTransition']) || false !== $config['enableRootTransition'],
+        );
+        return '<script id="ace-view-transition-hints">(function(h){try{var r=document.documentElement;'
+            . 'Object.keys(h.vars).forEach(function(k){r.style.setProperty(k,String(h.vars[k]));});'
+            . "r.classList.add('ace-view-transitions-enabled','ace-view-transition-style-'+h.style);"
+            . "r.style.setProperty('--ace-view-transition-enabled','1');"
+            . "if(h.root&&'startViewTransition' in document){r.style.viewTransitionName='root';}"
+            . '}catch(e){}})(' . wp_json_encode($hints) . ');</script>';
     }
 
     /**

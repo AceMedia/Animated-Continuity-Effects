@@ -41,40 +41,40 @@ html.ace-view-transition-style-rotate {
   --ace-view-transition-new-animation: ace-root-in-rotate;
 }
 
-::view-transition {
+:where(html)::view-transition {
   background: transparent;
 }
 
-::view-transition-group(root) {
+:where(html)::view-transition-group(root) {
   animation-duration: var(--ace-view-transition-duration, 350ms);
   animation-timing-function: var(--ace-view-transition-timing-function, cubic-bezier(0.2, 0, 0, 1));
 }
 
-::view-transition-group(*) {
+:where(html)::view-transition-group(*) {
   animation-duration: var(--ace-view-transition-duration, 350ms);
   animation-timing-function: var(--ace-view-transition-timing-function, cubic-bezier(0.2, 0, 0, 1));
   animation-fill-mode: both;
 }
 
-::view-transition-image-pair(*) {
+:where(html)::view-transition-image-pair(*) {
   isolation: isolate;
 }
 
-::view-transition-old(*),
-::view-transition-new(*) {
+:where(html)::view-transition-old(*),
+:where(html)::view-transition-new(*) {
   animation-duration: var(--ace-view-transition-duration, 350ms);
   animation-timing-function: var(--ace-view-transition-timing-function, cubic-bezier(0.2, 0, 0, 1));
   animation-fill-mode: both;
 }
 
-::view-transition-old(root) {
+:where(html)::view-transition-old(root) {
   animation-name: var(--ace-view-transition-old-animation, ace-root-out-fade);
   animation-duration: var(--ace-view-transition-duration, 350ms);
   animation-timing-function: var(--ace-view-transition-timing-function, cubic-bezier(0.2, 0, 0, 1));
   animation-fill-mode: both;
 }
 
-::view-transition-new(root) {
+:where(html)::view-transition-new(root) {
   animation-name: var(--ace-view-transition-new-animation, ace-root-in-fade);
   animation-duration: var(--ace-view-transition-duration, 350ms);
   animation-timing-function: var(--ace-view-transition-timing-function, cubic-bezier(0.2, 0, 0, 1));
@@ -152,10 +152,10 @@ html.ace-view-transition-style-rotate {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  ::view-transition-group(*),
-  ::view-transition-image-pair(*),
-  ::view-transition-new(*),
-  ::view-transition-old(*) {
+  :where(html)::view-transition-group(*),
+  :where(html)::view-transition-image-pair(*),
+  :where(html)::view-transition-new(*),
+  :where(html)::view-transition-old(*) {
     animation-duration: 1ms !important;
     animation-iteration-count: 1 !important;
     animation-delay: 0ms !important;

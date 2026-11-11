@@ -835,8 +835,8 @@ class ACE_Continuity_Plugin {
         echo '<style id="ace-view-transition-inline-css">';
         echo '@view-transition { navigation: auto; }';
         echo 'html.ace-view-transitions-enabled { view-transition-name: root; }';
-        echo '::view-transition { background: transparent; }';
-        echo '::view-transition-group(root) { animation-duration: ' . esc_html($config['cssVars']['--ace-view-transition-duration']) . '; animation-timing-function: ' . esc_html($config['cssVars']['--ace-view-transition-timing-function']) . '; }';
+        echo ':where(html)::view-transition { background: transparent; }';
+        echo ':where(html)::view-transition-group(root) { animation-duration: ' . esc_html($config['cssVars']['--ace-view-transition-duration']) . '; animation-timing-function: ' . esc_html($config['cssVars']['--ace-view-transition-timing-function']) . '; }';
         echo $this->persistent_region_css($settings); // phpcs:ignore WordPress.Security.EscapeOutput -- built from cleaned selectors
         echo $this->loading_indicator_css($settings); // phpcs:ignore WordPress.Security.EscapeOutput -- built from a cleaned selector
         echo '</style>';
@@ -915,8 +915,8 @@ class ACE_Continuity_Plugin {
             // No animation on either side, and the old page's version stays on show: the new page is
             // captured at its first paint, before its scripts have laid out menus or loaded icons, so its
             // copy of the region appears when the transition ends, already finished.
-            $css .= '::view-transition-group(' . $name . '), ::view-transition-old(' . $name . ') { animation: none; }';
-            $css .= '::view-transition-new(' . $name . ') { animation: none; opacity: 0; }';
+            $css .= ':where(html)::view-transition-group(' . $name . '), :where(html)::view-transition-old(' . $name . ') { animation: none; }';
+            $css .= ':where(html)::view-transition-new(' . $name . ') { animation: none; opacity: 0; }';
         }
         return $css;
     }
